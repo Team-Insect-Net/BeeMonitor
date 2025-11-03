@@ -18,3 +18,9 @@ weights/
 *.pt
 *.onnx
 *.engine
+
+DELIVERABLES_CHECKLIST.md
+EXECUTIVE_SUMMARY.md
+IMPLEMENTATION_GUIDE.md
+installation.py
+VIS*

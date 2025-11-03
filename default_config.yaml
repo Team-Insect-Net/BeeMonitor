@@ -1,0 +1,90 @@
+# Default configuration for Bee Monitor System
+
+# Video processing settings
+video:
+  resolution:
+    height: 720
+    width: 1280
+  fps: 30
+
+# Model paths
+models:
+  nest_detection: "models/nest.pt"
+  tracking: "models/bee.pt"
+
+# Tracking parameters
+tracking:
+  max_age: 30  # Maximum number of frames to keep track without detection
+  distance_threshold: 100  # Distance threshold for position prediction
+  association_threshold: 200  # Threshold for Hungarian algorithm matching
+  track_start_id: 0  # Starting ID for tracks
+
+# Detection parameters
+detection:
+  confidence_threshold: 0.25  # Minimum confidence for detections
+  iou_threshold: 0.5  # IoU threshold for NMS
+  motion_threshold: 5  # Threshold for motion detection
+  min_contour_area: 100  # Minimum contour area for motion detection
+  aspect_ratio_min: 0.5  # Minimum aspect ratio for valid detections
+  aspect_ratio_max: 2.0  # Maximum aspect ratio for valid detections
+
+# Nest detection parameters
+nest:
+  confidence_threshold: 0.9  # High confidence for nest detection
+  frame_skip: 30  # Process every Nth frame for nest detection
+  min_detections: 60  # Minimum number of detections required
+  row_threshold: 10  # Threshold for clustering nests into rows
+  col_threshold: 10  # Threshold for clustering nests into columns
+  min_row_size: 5  # Minimum nests per row
+  nest_width: 38  # Width of nest hole in pixels
+  nest_height: 28  # Height of nest hole in pixels
+  padding:
+    x: 5  # Horizontal padding for nest boxes
+    y: 7  # Vertical padding for nest boxes
+  hotel_padding:
+    x: 100  # Horizontal padding for hotel ROI
+    y: 50  # Vertical padding for hotel ROI
+
+# Event processing parameters
+processing:
+  window_size: 3  # Number of frames to analyze for entry/exit
+  padding: 20  # Padding around nest for entry/exit detection
+  entry_window_size: 6  # Window size for entry detection
+  entry_padding: 10  # Padding for entry detection
+  exit_window_size: 3  # Window size for exit detection
+  exit_padding: 20  # Padding for exit detection
+  min_trajectory_length: 5  # Minimum trajectory points for valid track
+  speed_threshold:
+    start: 10  # Start speed threshold for classification
+    end: 10  # End speed threshold for classification
+
+# Output settings
+output:
+  base_folder: "output"
+  save_visualizations: false
+  save_intermediate_frames: false
+  video_codec: "mp4v"
+  video_fps: 30
+  csv_columns:
+    - "timestamp"
+    - "nest"
+    - "action"
+  
+# Visualization settings
+visualization:
+  colors:
+    nest: [255, 0, 0]  # Blue (BGR)
+    track: [0, 255, 0]  # Green (BGR)
+    motion: [0, 0, 255]  # Red (BGR)
+    roi: [0, 0, 0]  # Black (BGR)
+  font:
+    face: 0  # cv2.FONT_HERSHEY_SIMPLEX
+    scale: 0.75
+    thickness: 2
+  line_thickness: 2
+
+# Logging settings
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: null  # Set to filename to log to file
