@@ -9,7 +9,7 @@ from typing import Optional
 from pathlib import Path
 import pandas as pd
 
-from bee_monitor.core.config import Config
+from beemonitor.core.config import Config
 
 
 logger = logging.getLogger(__name__)

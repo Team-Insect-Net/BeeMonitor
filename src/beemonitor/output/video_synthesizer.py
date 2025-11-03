@@ -10,7 +10,7 @@ import cv2
 import pandas as pd
 import numpy as np
 
-from bee_monitor.core.config import Config
+from beemonitor.core.config import Config
 
 
 logger = logging.getLogger(__name__)

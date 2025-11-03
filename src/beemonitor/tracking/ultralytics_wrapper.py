@@ -9,7 +9,7 @@ from collections import defaultdict
 from typing import List, Tuple, Optional
 import cv2
 
-from bee_monitor.core.config import Config
+from beemonitor.core.config import Config
 
 
 logger = logging.getLogger(__name__)

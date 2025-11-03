@@ -8,7 +8,7 @@ import logging
 from typing import List, Tuple, Optional
 import numpy as np
 
-from bee_monitor.core.config import Config
+from beemonitor.core.config import Config
 
 
 logger = logging.getLogger(__name__)

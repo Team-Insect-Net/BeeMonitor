@@ -1,6 +1,6 @@
 """Utility functions for bee monitoring."""
 
-from bee_monitor.utils.geometry import (
+from beemonitor.utils.geometry import (
     compute_centroid,
     compute_iou,
     euclidean_distance,

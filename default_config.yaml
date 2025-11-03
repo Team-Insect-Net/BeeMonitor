@@ -9,8 +9,8 @@ video:
 
 # Model paths
 models:
-  nest_detection: "models/nest.pt"
-  tracking: "models/bee.pt"
+  nest_detection: "/Users/edwardamoah/Documents/GitHub/BeeMonitor/models/nest.pt"
+  tracking: "/Users/edwardamoah/Documents/GitHub/BeeMonitor/models/bee.pt"
 
 # Tracking parameters
 tracking:
@@ -27,6 +27,34 @@ detection:
   min_contour_area: 100  # Minimum contour area for motion detection
   aspect_ratio_min: 0.5  # Minimum aspect ratio for valid detections
   aspect_ratio_max: 2.0  # Maximum aspect ratio for valid detections
+  tracking_classes: [3]  # Classes to track (e.g., bees)
+
+
+# Nest grid structure (for consistent ID assignment)
+nest_grid:
+  rows: 6                 # Number of rows in bee hotel
+  columns: 10             # Number of columns per row (standard)
+  expected_total: 60      # Total expected nests (rows * columns)
+  tolerance: 2            # Allow ± this many nests
+  
+  # Detection strategy
+  exhaustive_search: true # Scan multiple frames until all found
+  max_frames_to_scan: 1000 # Maximum frames to check
+  
+  # ID assignment method
+  id_method: "reference_match"  # Options: "grid_based", "spatial", "reference_match"
+  
+  # Reference frame for cross-video consistency
+  use_reference: false     # Use saved reference for subsequent videos
+  reference_path: "/Users/edwardamoah/Documents/GitHub/BeeMonitor/tests/2024-05-16_18_10_00_nest_reference.png"     # Path to reference frame (if use_reference: true)
+  
+  expected_columns: 10
+  min_nests_per_row: 6
+  row_tolerance: 15
+  fill_missing: true
+  auto_detect_rows: true
+
+
 
 # Nest detection parameters
 nest:
@@ -36,6 +64,8 @@ nest:
   row_threshold: 10  # Threshold for clustering nests into rows
   col_threshold: 10  # Threshold for clustering nests into columns
   min_row_size: 5  # Minimum nests per row
+  nest_class : 2  # Class ID for nest detection
+  hotel_class : 1  # Class ID for hotel detection
   nest_width: 38  # Width of nest hole in pixels
   nest_height: 28  # Height of nest hole in pixels
   padding:
@@ -54,14 +84,14 @@ processing:
   exit_window_size: 3  # Window size for exit detection
   exit_padding: 20  # Padding for exit detection
   min_trajectory_length: 5  # Minimum trajectory points for valid track
-  speed_threshold:
-    start: 10  # Start speed threshold for classification
-    end: 10  # End speed threshold for classification
+  start_speed_threshold: 10 # Speed threshold for exit classification
+  end_speed_threshold: 10  # Speed threshold for entry classification
+
 
 # Output settings
 output:
-  base_folder: "output"
-  save_visualizations: false
+  base_folder: "/Users/edwardamoah/Documents/GitHub/BeeMonitor/output"
+  save_visualizations: false # if true will save video of processing video
   save_intermediate_frames: false
   video_codec: "mp4v"
   video_fps: 30

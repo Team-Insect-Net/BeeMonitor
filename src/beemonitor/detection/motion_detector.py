@@ -12,8 +12,8 @@ import pandas as pd
 import os
 import traceback
 
-from bee_monitor.core.config import Config
-from bee_monitor.tracking.bee_tracker import BeeTracker
+from beemonitor.core.config import Config
+from beemonitor.tracking.bee_tracker import BeeTracker
 
 
 logger = logging.getLogger(__name__)
@@ -482,7 +482,14 @@ class MotionDetector:
         # Run YOLO
         iou_threshold = self.config.detection.iou_threshold
         results = self.model(current_frame, verbose=False, cls=3, iou=iou_threshold)
-        
+
+        # results = self.model.predict(
+        #     current_frame,
+        #     verbose=False,
+        #     classes=self.config.detection.tracking_classes,
+        #     iou=self.config.detection.iou_threshold
+        # )
+                
         # Extract detections
         boxes = results[0].boxes.xywh.tolist()
         labels = results[0].boxes.cls.tolist()

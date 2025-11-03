@@ -10,8 +10,13 @@ from typing import Dict, Optional, Tuple, List, Any
 import pandas as pd
 import numpy as np
 from ultralytics import YOLO
+import os
 
-from bee_monitor.core.config import Config
+from beemonitor.core.config import Config
+
+from pathlib import Path
+from typing import Dict, Optional
+import cv2
 
 
 logger = logging.getLogger(__name__)
@@ -64,7 +69,7 @@ class AnalysisResults:
         self.nest_detections = nest_detections
         self.motion_data = motion_data
     
-    def to_csv(self, filename: str, columns: Optional[List[str]] = None) -> None:
+    def to_csv(self, output_folder: str = "output", columns: Optional[List[str]] = None) -> None:
         """Export events to CSV file.
         
         Args:
@@ -75,6 +80,9 @@ class AnalysisResults:
             >>> results.to_csv("output/events.csv")
             >>> results.to_csv("output/events.csv", columns=["timestamp", "nest", "action"])
         """
+        filename = self.video_path.replace(".mp4", "_events.csv") 
+        filename = filename.split("/")[-1]
+        filename = str(Path(output_folder) / Path(filename).name)
         if columns is None:
             self.events.to_csv(filename, index=False)
         else:
@@ -83,7 +91,7 @@ class AnalysisResults:
         
         logger.info(f"Saved {len(self.events)} events to {filename}")
     
-    def save_video(self, filename: str, output_folder: str = "output") -> None:
+    def save_video(self, output_folder: str = "output") -> None:
         """Save annotated video with tracking visualization.
         
         Args:
@@ -93,8 +101,8 @@ class AnalysisResults:
         Example:
             >>> results.save_video("annotated.mp4")
         """
-        from bee_monitor.output.video_synthesizer import VideoSynthesizer
-        from bee_monitor.core.config import Config
+        from beemonitor.output.video_synthesizer import VideoSynthesizer
+        from beemonitor.core.config import Config
         
         config = Config.default()
         synthesizer = VideoSynthesizer(config)
@@ -246,7 +254,7 @@ class BeeMonitor:
         self,
         video_path: str,
         output_folder: Optional[str] = None,
-        visualize: bool = False
+        visualize: Optional[bool] = None 
     ) -> AnalysisResults:
         """Analyze a video to detect and track bee activity.
         
@@ -278,6 +286,10 @@ class BeeMonitor:
         video_file = Path(video_path)
         if not video_file.exists():
             raise FileNotFoundError(f"Video file not found: {video_path}")
+        
+         # NEW: Use config settings if not explicitly provided
+        if visualize is None:
+            visualize = self.config.output.save_visualizations
         
         # Set output folder
         if output_folder is None:
@@ -322,65 +334,242 @@ class BeeMonitor:
         
         return results
     
+    # def get_nest_detection(self, video_path: str) -> pd.DataFrame:
+    #     """Detect nests in the video.
+        
+    #     This method will use the nest_detector module to find and identify
+    #     nest holes in the bee hotel.
+        
+    #     Args:
+    #         video_path: Path to video file
+            
+    #     Returns:
+    #         DataFrame with nest detection results
+            
+    #     Note:
+    #         This is a placeholder that will be implemented when we create
+    #         the detection module.
+    #     """
+    #     # Import here to avoid circular imports
+    #     # This will be implemented when we create the detection module
+    #     from beemonitor.detection.nest_detector import NestDetector
+        
+    #     detector = NestDetector(
+    #         model=self.nest_model,
+    #         config=self.config
+    #     )
+        
+    #     return detector.detect_nests(
+    #         video_path=video_path,
+    #         res_height=self.res_height,
+    #         res_width=self.res_width
+    #     )
+    # def get_nest_detection(self, video_path: str) -> pd.DataFrame:
+    #     """Detect nests using robust detector."""
+    #     from beemonitor.detection.robust_nest_detector import (
+    #         RobustNestDetector, GridConfig
+    #     )
+        
+    #     # Create grid config from settings
+    #     grid_config = GridConfig(
+    #         rows=self.config.nest_grid.rows,
+    #         columns=self.config.nest_grid.columns,
+    #         expected_total=self.config.nest_grid.expected_total,
+    #         tolerance=self.config.nest_grid.tolerance
+    #     )
+        
+    #     # Use robust detector
+    #     detector = RobustNestDetector(
+    #         model=self.nest_model,
+    #         config=self.config,
+    #         grid_config=grid_config
+    #     )
+        
+    #     if self.config.nest_grid.use_reference and self.config.nest_grid.reference_path:
+    #         # Match to reference
+    #         return detector.match_to_reference(
+    #             video_path,
+    #             self.config.nest_grid.reference_path,
+    #             self.res_height,
+    #             self.res_width
+    #         )
+    #     else:
+    #         # Exhaustive detection
+    #         return detector.detect_nests_exhaustive(
+    #             video_path,
+    #             self.res_height,
+    #             self.res_width,
+    #             max_frames=self.config.nest_grid.max_frames_to_scan
+    #         )
+
     def get_nest_detection(self, video_path: str) -> pd.DataFrame:
-        """Detect nests in the video.
+        """Detect nests using improved robust detector."""
+        from beemonitor.detection.improved_nest_detector import (
+            ImprovedNestDetector, GridConfig
+        )
+        logger.info("Starting nest detection with improved detector")
         
-        This method will use the nest_detector module to find and identify
-        nest holes in the bee hotel.
-        
-        Args:
-            video_path: Path to video file
-            
-        Returns:
-            DataFrame with nest detection results
-            
-        Note:
-            This is a placeholder that will be implemented when we create
-            the detection module.
-        """
-        # Import here to avoid circular imports
-        # This will be implemented when we create the detection module
-        from bee_monitor.detection.nest_detector import NestDetector
-        
-        detector = NestDetector(
-            model=self.nest_model,
-            config=self.config
+        # Create grid config
+        grid_config = GridConfig(
+            expected_columns=10,  # 10 columns per row
+            min_nests_per_row=6,
+            row_tolerance=15,
+            fill_missing=True,
+            auto_detect_rows=True
         )
         
-        return detector.detect_nests(
+        # Initialize detector
+        detector = ImprovedNestDetector(
+            model=self.nest_model,
+            config=self.config,
+            grid_config=grid_config
+        )
+        
+        # Detect and assign IDs
+        nest_with_ids = detector.detect_and_assign_ids(
             video_path=video_path,
             res_height=self.res_height,
-            res_width=self.res_width
+            res_width=self.res_width,
+            max_frames=1000
         )
+        
+        # Save reference frame
+        #reference_folder = Path(self.config.output.base_folder) / "nest_references"
+        #reference_folder.mkdir(parents=True, exist_ok=True)
+        vd = video_path.split("/")[-1].split(".mp4")[0]
+        reference_path = os.path.join(
+            self.config.output.base_folder,
+            f"{vd}_nest_reference.png"
+        )
+        
+        detector.save_reference_frame(
+            video_path=video_path,
+            nest_with_ids=nest_with_ids,
+            output_path=reference_path,
+            res_width=self.res_width,
+            res_height=self.res_height
+        )
+        
+        logger.info(f"Saved reference: {reference_path}")
+        
+        # Convert to DataFrame
+        df = detector.to_dataframe(nest_with_ids)
+        logger.info(f"Nest detection complete: {len(nest_with_ids)} nests")
+        
+        return df
     
+    # def process_nest_detection(
+    #     self,
+    #     video_path: str,
+    #     nest_detection: pd.DataFrame
+    # ) -> Dict:
+    #     """Process nest detections to identify individual nest holes.
+        
+    #     Args:
+    #         video_path: Path to video file
+    #         nest_detection: DataFrame from get_nest_detection
+            
+    #     Returns:
+    #         Dictionary with 'hotel' ROI and 'nests' mapping
+    #     """
+    #     # Import here to avoid circular imports
+    #     from beemonitor.detection.nest_detector import NestDetector
+        
+    #     detector = NestDetector(
+    #         model=self.nest_model,
+    #         config=self.config
+    #     )
+        
+    #     return detector.process_detections(
+    #         video_path=video_path,
+    #         nest_detection=nest_detection,
+    #         res_height=self.res_height,
+    #         res_width=self.res_width
+    #     )
+
     def process_nest_detection(
         self,
         video_path: str,
         nest_detection: pd.DataFrame
     ) -> Dict:
-        """Process nest detections to identify individual nest holes.
+        """Process nest detections into format needed by motion tracking."""
         
-        Args:
-            video_path: Path to video file
-            nest_detection: DataFrame from get_nest_detection
+        logger.info("Processing nest detections...")
+        
+        # Extract nest dictionary from DataFrame
+        if 'nest_dict' in nest_detection.columns:
+            nest_dict = nest_detection.iloc[0]['nest_dict']
+        else:
+            # Legacy format
+            coordinates = nest_detection.iloc[0]['coordinates']
+            nest_dict = {str(i+1): box for i, box in enumerate(coordinates)}
+        
+        # Calculate hotel ROI
+        all_boxes = list(nest_dict.values())
+        
+        if not all_boxes:
+            raise ValueError("No nests detected")
+        
+        x_min = max(0, int(min(box[0] for box in all_boxes) - 100))
+        y_min = max(0, int(min(box[1] for box in all_boxes) - 50))
+        x_max = min(self.res_width, int(max(box[2] for box in all_boxes) + 100))
+        y_max = min(self.res_height, int(max(box[3] for box in all_boxes) + 50))
+        
+        hotel_roi = (x_min, y_min, x_max, y_max)
+        
+        logger.info(f"Hotel ROI: {hotel_roi}")
+        logger.info(f"Nests processed: {len(nest_dict)}")
+        
+        # Save visualization
+        #self._save_nest_visualization(video_path, hotel_roi, nest_dict)
+        
+        return {
+            'hotel': hotel_roi,
+            'nests': nest_dict
+        }
+    
+    def _save_nest_visualization(
+        self,
+        video_path: str,
+        hotel_roi: tuple,
+        nest_dict: Dict
+    ):
+        """Save visualization of detected nests with IDs."""
+        cap = cv2.VideoCapture(video_path)
+        ret, frame = cap.read()
+        cap.release()
+        
+        if not ret or frame is None:
+            logger.warning("Could not read frame for visualization")
+            return
+        
+        # Resize and draw
+        frame = cv2.resize(frame, (self.res_width, self.res_height))
+        
+        # Draw hotel ROI
+        x1, y1, x2, y2 = hotel_roi
+        cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 0), 3)
+        
+        # Draw nests with IDs
+        for nest_id, box in nest_dict.items():
+            x1, y1, x2, y2 = [int(v) for v in box]
+            x1 -= 5
+            y1 -= 7
+            x2 += 5
+            y2 += 7
             
-        Returns:
-            Dictionary with 'hotel' ROI and 'nests' mapping
-        """
-        # Import here to avoid circular imports
-        from bee_monitor.detection.nest_detector import NestDetector
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            cv2.putText(
+                frame, nest_id, (x1, y1 - 5),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 255, 0), 2
+            )
         
-        detector = NestDetector(
-            model=self.nest_model,
-            config=self.config
-        )
-        
-        return detector.process_detections(
-            video_path=video_path,
-            nest_detection=nest_detection,
-            res_height=self.res_height,
-            res_width=self.res_width
-        )
+        # Save
+        output_path = Path(video_path).parent / f"{Path(video_path).stem}_nest_detection.png"
+        cv2.imwrite(str(output_path), frame)
+        logger.info(f"Saved visualization: {output_path}")
+
+
     
     def get_motion_tracking(
         self,
@@ -401,7 +590,7 @@ class BeeMonitor:
             DataFrame with tracking results
         """
         # Import here to avoid circular imports
-        from bee_monitor.detection.motion_detector import MotionDetector
+        from beemonitor.detection.motion_detector import MotionDetector
         
         detector = MotionDetector(
             model=self.tracking_model,
@@ -432,7 +621,7 @@ class BeeMonitor:
             DataFrame with events (timestamp, nest, action)
         """
         # Import here to avoid circular imports
-        from bee_monitor.processing.event_processor import EventProcessor
+        from beemonitor.processing.event_processor import EventProcessor
         
         processor = EventProcessor(config=self.config)
         
@@ -456,7 +645,7 @@ class BeeMonitor:
             DataFrame with timestamps added
         """
         # Import here to avoid circular imports
-        from bee_monitor.output.csv_generator import CSVGenerator
+        from beemonitor.output.csv_generator import CSVGenerator
         
         generator = CSVGenerator(config=self.config)
         
@@ -486,7 +675,7 @@ class BeeMonitor:
             Path to generated video file
         """
         # Import here to avoid circular imports
-        from bee_monitor.output.video_synthesizer import VideoSynthesizer
+        from beemonitor.output.video_synthesizer import VideoSynthesizer
         
         synthesizer = VideoSynthesizer(config=self.config)
         

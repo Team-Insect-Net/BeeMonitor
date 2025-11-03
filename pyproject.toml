@@ -3,12 +3,12 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "bee-monitor"
+name = "beemonitor"
 version = "1.0.0"
 description = "Computer vision system for monitoring solitary bee activity"
 readme = "README.md"
 authors = [
-    {name = "Edward Amoah", email = "your.email@example.com"}
+    {name = "Edward Amoah", email = "eai6@psu.edu"}
 ]
 license = {text = "MIT"}
 classifiers = [
@@ -114,7 +114,7 @@ addopts = [
 ]
 
 [tool.coverage.run]
-source = ["src/bee_monitor"]
+source = ["src/beemonitor"]
 omit = [
     "*/tests/*",
     "*/test_*.py",

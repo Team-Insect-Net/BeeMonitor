@@ -9,7 +9,7 @@ from typing import List, Tuple, Optional
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 
-from bee_monitor.utils.geometry import compute_centroid
+from beemonitor.utils.geometry import compute_centroid
 
 
 logger = logging.getLogger(__name__)

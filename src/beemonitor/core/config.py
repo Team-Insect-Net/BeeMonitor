@@ -2,7 +2,7 @@
 
 import yaml
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 from dataclasses import dataclass, field
 
 
@@ -39,6 +39,32 @@ class DetectionConfig:
     min_contour_area: int = 100
     aspect_ratio_min: float = 0.5
     aspect_ratio_max: float = 2.0
+    tracking_classes: List[int] = field(default_factory=lambda: [3])  
+
+@dataclass
+class NestGridConfig:
+    """Configuration for nest grid structure."""
+    rows: int = 6
+    columns: int = 10
+    expected_total: int = 50
+    tolerance: int = 2
+    
+    # Detection strategy
+    exhaustive_search: bool = True
+    max_frames_to_scan: int = 1000
+    
+    # ID assignment
+    id_method: str = "grid_based"
+    
+    # Reference matching
+    use_reference: bool = False
+    reference_path: Optional[str] = None
+
+    expected_columns: int = 10
+    min_nests_per_row: int = 10
+    row_tolerance: int = 15
+    fill_missing: bool = True
+    auto_detect_rows: bool = True
 
 
 @dataclass
@@ -56,6 +82,7 @@ class NestConfig:
     padding_y: int = 7
     hotel_padding_x: int = 100
     hotel_padding_y: int = 50
+    nest_class: int = 2
 
 
 @dataclass
@@ -132,6 +159,12 @@ class Config:
         
         detection_cfg = config_dict.get("detection", {})
         self.detection = DetectionConfig(**detection_cfg) if detection_cfg else DetectionConfig()
+
+        processing_cfg = config_dict.get("processing", {})
+        self.processing = ProcessingConfig(**processing_cfg) if processing_cfg else ProcessingConfig()
+
+        nest_grid_cfg = config_dict.get("nest_grid", {})
+        self.nest_grid = NestGridConfig(**nest_grid_cfg) if nest_grid_cfg else NestGridConfig()
         
         nest_cfg = config_dict.get("nest", {})
         if nest_cfg:

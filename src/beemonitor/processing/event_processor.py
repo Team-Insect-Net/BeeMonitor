@@ -9,8 +9,8 @@ from typing import Dict, List, Tuple, Optional, Union
 import numpy as np
 import pandas as pd
 
-from bee_monitor.core.config import Config
-from bee_monitor.processing.trajectory_analyzer import TrajectoryAnalyzer
+from beemonitor.core.config import Config
+from beemonitor.processing.trajectory_analyzer import TrajectoryAnalyzer
 
 
 logger = logging.getLogger(__name__)

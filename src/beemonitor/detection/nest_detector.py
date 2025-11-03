@@ -11,8 +11,8 @@ import numpy as np
 import pandas as pd
 import math
 
-from bee_monitor.core.config import Config
-from bee_monitor.utils.geometry import remove_overlapping_points
+from beemonitor.core.config import Config
+from beemonitor.utils.geometry import remove_overlapping_points
 
 
 logger = logging.getLogger(__name__)
@@ -462,19 +462,61 @@ class NestDetector:
         
         return nest_ids
     
-    def _save_frame(self, video_path: str, frame: np.ndarray, frame_number: int) -> None:
-        """Save a frame as an image file.
+
+    def _save_frame(self, video_path: str, frame, frame_number: int) -> None:
+        """Save a frame as an image file with proper error handling.
         
         Args:
             video_path: Path to video file
-            frame: Frame to save
+            frame: Frame to save (numpy array)
             frame_number: Frame number for filename
         """
-        output_folder = video_path.replace('.mp4', '_frames')
-        filename = f"{output_folder}_frame_{frame_number:05d}.png"
-        cv2.imwrite(filename, frame)
-        logger.debug(f"Saved frame to {filename}")
+        # CRITICAL: Validate frame before attempting to save
+        if frame is None:
+            logger.warning(f"Cannot save frame {frame_number}: frame is None")
+            return
+        
+        if not hasattr(frame, 'shape'):
+            logger.warning(f"Cannot save frame {frame_number}: frame has no shape attribute")
+            return
+        
+        if frame.size == 0:
+            logger.warning(f"Cannot save frame {frame_number}: frame is empty")
+            return
+        
+        try:
+            output_folder = video_path.replace('.mp4', '_frames')
+            filename = f"{output_folder}_frame_{frame_number:05d}.png"
+            
+            # Ensure parent directory exists
+            from pathlib import Path
+            Path(filename).parent.mkdir(parents=True, exist_ok=True)
+            
+            # Attempt to save
+            success = cv2.imwrite(filename, frame)
+            
+            if success:
+                logger.debug(f"Saved frame to {filename}")
+            else:
+                logger.warning(f"cv2.imwrite returned False for {filename}")
+        
+        except Exception as e:
+            logger.error(f"Error saving frame {frame_number}: {e}")
+            # Don't raise exception - just log and continue
     
+    # def _save_frame(self, video_path: str, frame: np.ndarray, frame_number: int) -> None:
+    #     """Save a frame as an image file.
+        
+    #     Args:
+    #         video_path: Path to video file
+    #         frame: Frame to save
+    #         frame_number: Frame number for filename
+    #     """
+    #     output_folder = video_path.replace('.mp4', '_frames')
+    #     filename = f"{output_folder}_frame_{frame_number:05d}.png"
+    #     cv2.imwrite(filename, frame)
+    #     logger.debug(f"Saved frame to {filename}")
+
     def _save_visualization(
         self,
         video_path: str,
@@ -482,46 +524,55 @@ class NestDetector:
         res_height: int,
         res_width: int
     ) -> None:
-        """Save visualization of detected nests.
+        return None
+    
+    # def _save_visualization(
+    #     self,
+    #     video_path: str,
+    #     nest_ids: Dict,
+    #     res_height: int,
+    #     res_width: int
+    # ) -> None:
+    #     """Save visualization of detected nests.
         
-        Args:
-            video_path: Path to video file
-            nest_ids: Dictionary with nest IDs and locations
-            res_height: Frame height
-            res_width: Frame width
-        """
-        # Load the saved frame
-        frame_path = video_path.replace('.mp4', '_frames') + f"_frame_{0:05d}.png"
+    #     Args:
+    #         video_path: Path to video file
+    #         nest_ids: Dictionary with nest IDs and locations
+    #         res_height: Frame height
+    #         res_width: Frame width
+    #     """
+    #     # Load the saved frame
+    #     frame_path = video_path.replace('.mp4', '_frames') + f"_frame_{0:05d}.png"
         
-        try:
-            frame = cv2.imread(frame_path)
+    #     try:
+    #         frame = cv2.imread(frame_path)
             
-            if frame is not None:
-                # Draw nest IDs on frame
-                for nest_id, bbox in nest_ids["nests"].items():
-                    x1, y1, x2, y2 = bbox
-                    cv2.rectangle(
-                        frame,
-                        (int(x1), int(y1)),
-                        (int(x2), int(y2)),
-                        (0, 255, 0),
-                        2
-                    )
-                    cv2.putText(
-                        frame,
-                        nest_id,
-                        (int(x1), int(y1) - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.5,
-                        (0, 255, 0),
-                        2
-                    )
+    #         if frame is not None:
+    #             # Draw nest IDs on frame
+    #             for nest_id, bbox in nest_ids["nests"].items():
+    #                 x1, y1, x2, y2 = bbox
+    #                 cv2.rectangle(
+    #                     frame,
+    #                     (int(x1), int(y1)),
+    #                     (int(x2), int(y2)),
+    #                     (0, 255, 0),
+    #                     2
+    #                 )
+    #                 cv2.putText(
+    #                     frame,
+    #                     nest_id,
+    #                     (int(x1), int(y1) - 10),
+    #                     cv2.FONT_HERSHEY_SIMPLEX,
+    #                     0.5,
+    #                     (0, 255, 0),
+    #                     2
+    #                 )
                 
-                # Save annotated frame
-                output_folder = video_path.replace('.mp4', '_annotated_frames')
-                filename = f"{output_folder}_frame_{10000:05d}.png"
-                cv2.imwrite(filename, frame)
-                logger.info(f"Saved nest visualization to {filename}")
+    #             # Save annotated frame
+    #             output_folder = video_path.replace('.mp4', '_annotated_frames')
+    #             filename = f"{output_folder}_frame_{10000:05d}.png"
+    #             cv2.imwrite(filename, frame)
+    #             logger.info(f"Saved nest visualization to {filename}")
         
-        except Exception as e:
-            logger.warning(f"Could not save visualization: {e}")
+    #     except Exception as e:
+    #         logger.warning(f"Could not save visualization: {e}")
