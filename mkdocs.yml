@@ -1,0 +1,7 @@
+site_name: BeeMonitor
+nav:
+  - Home: beemonitor/web/docs/index.md
+  - Hardware: beemonitor/web/docs/hardware.md
+  - Software: beemonitor/web/docs/software.md
+theme:
+  name: mkdocs

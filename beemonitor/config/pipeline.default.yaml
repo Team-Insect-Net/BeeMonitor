@@ -1,0 +1,79 @@
+
+# BeeMonitor pipeline configuration (defaults)
+detectors:
+  bee:
+    name: "yolo"
+    weights: "weights/bee.pt"        # <-- your bee model
+    conf_threshold: 0.25
+    iou_threshold: 0.45
+    classes: null                     # or a list of class ids
+    device: null                      # "0" for GPU, "cpu" for CPU
+  nest:
+    name: "yolo"
+    weights: "weights/nest.pt"        # <-- your nest/tube model
+    conf_threshold: 0.25
+    iou_threshold: 0.45
+    classes: null
+    device: null
+
+tracking:
+  name: "beetrack"            # "beetrack" or "ultralytics_bytetrack"
+  max_age: 20                 # for centroid tracker
+  iou_threshold: 0.3          # for centroid tracker
+  dist_threshold: 50.0        # for centroid tracker
+  classes: null
+  # For ultralytics_bytetrack:
+  # config: "beemonitor/config/bytetrack.yaml"
+
+
+
+tracker:
+  config: "beemonitor/config/bytetrack.yaml"
+
+motion_gating:
+  enabled: true
+  min_motion_frames: 3
+  blur_kernel: 7
+
+nestid:
+  name: "yolo_grid"
+  rows: 6
+  cols: 10
+  template_path: "beemonitor/config/nest_template.json"
+  cache_dir: "outputs/nest_cache"
+  fill_missing: true
+  alignment:
+    method_order: ["affine", "homography"]
+    ransac_reproj_px: 4.0
+    homography_reproj_px: 3.0
+    residual_px_ok: 8.0
+    allow_partial: true
+    min_visible_fraction: 0.85
+  revalidate:
+    every_n_frames: 300
+    jitter_px_tolerance: 5.0
+
+
+events:
+  gate:
+    in_inflate_px: 4
+    out_inflate_px: 12
+    min_dwell_frames: 2
+    min_gap_frames: 3
+    max_assign_dist_px: 40
+    flush_on_end: true
+
+
+analyzer:
+  allow_multiple_open: false   # usually keep one open visit at a time per tube
+
+
+
+overlay:
+  draw_tracks: true
+  draw_tubes: true
+  tail_len: 24
+  every_nth_frame: 1
+output:
+  make_overlay_video: true
+

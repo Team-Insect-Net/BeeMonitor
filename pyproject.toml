@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "beemonitor"
+version = "0.1.0"
+description = "AI-powered monitoring of solitary bee activity (detection, tracking, nest events)"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [{ name = "BeeMonitor Team" }]
+dependencies = [
+  "numpy",
+  "opencv-python",
+  "pandas",
+  "pyyaml",
+  "tqdm",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff", "mypy", "types-PyYAML"]
+
+# ---- Setuptools config: only package beemonitor, exclude weights/tests/docs/etc.
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["beemonitor*"]
+exclude = ["weights*", "tests*", "docs*", "scripts*"]
+
+# Include non-.py data inside the beemonitor package (e.g., YAML configs)
+[tool.setuptools.package-data]
+beemonitor = ["config/*.yaml"]
