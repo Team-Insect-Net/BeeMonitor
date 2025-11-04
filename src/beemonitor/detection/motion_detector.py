@@ -418,7 +418,7 @@ class MotionDetector:
         frame_diff = cv2.absdiff(current_frame_gray, prev_frame_gray)
         
         # Apply thresholding
-        threshold = self.config.detection.motion_threshold
+        threshold = self.config.tracking.motion_threshold
         _, thresholded_frame = cv2.threshold(frame_diff, threshold, 255, cv2.THRESH_BINARY)
         
         # Find contours
@@ -432,10 +432,10 @@ class MotionDetector:
         frame_contours = []
         x1, y1, x2, y2 = [int(c) for c in site_roi]
         
-        min_area = self.config.detection.min_contour_area
-        aspect_min = self.config.detection.aspect_ratio_min
-        aspect_max = self.config.detection.aspect_ratio_max
-        
+        min_area = self.config.tracking.min_contour_area
+        aspect_min = self.config.tracking.aspect_ratio_min
+        aspect_max = self.config.tracking.aspect_ratio_max
+
         for contour in contours:
             if cv2.contourArea(contour) > min_area:
                 (x, y, w, h) = cv2.boundingRect(contour)
@@ -480,8 +480,10 @@ class MotionDetector:
             Tuple of (boxes, labels, annotated_frame)
         """
         # Run YOLO
-        iou_threshold = self.config.detection.iou_threshold
-        results = self.model(current_frame, verbose=False, cls=3, iou=iou_threshold)
+
+        iou_threshold = self.config.tracking.iou_threshold
+        _class = self.config.tracking.tracking_class
+        results = self.model(current_frame, verbose=False, cls= _class, iou=iou_threshold)
 
         # results = self.model.predict(
         #     current_frame,
@@ -495,8 +497,8 @@ class MotionDetector:
         labels = results[0].boxes.cls.tolist()
         
         normalized_boxes = []
-        aspect_min = self.config.detection.aspect_ratio_min
-        aspect_max = self.config.detection.aspect_ratio_max
+        aspect_min = self.config.tracking.aspect_ratio_min
+        aspect_max = self.config.tracking.aspect_ratio_max
         
         for x, y, w, h in boxes:
             x, y, w, h = int(x), int(y), int(w), int(h)

@@ -338,6 +338,12 @@ class NestConfig:
     
     y_position_tolerance: float = 30.0
     """Maximum allowed deviation from average Y position for nests in same row (pixels)"""
+
+    nest_tube_class: int = 2
+    """YOLO class ID for nest tube detection (adjust based on your model)"""
+
+    hotel_class: int = 1
+    """YOLO class ID for hotel detection (adjust based on your model)"""
     
     def __post_init__(self):
         """Validate configuration after initialization."""
@@ -398,7 +404,7 @@ class TrackingConfig:
     iou_threshold: float = 0.5
     """IoU threshold for YOLO detection"""
     
-    detection_class: int = 3
+    tracking_class: int = 3
     """YOLO class ID for bee detection (adjust based on your model)"""
 
 

@@ -1164,6 +1164,8 @@ class NestDetector:
         Returns:
             List of (x, y) midpoints
         """
+
+        nest_tube_class = self.config.nest.nest_tube_class
         def get_midpoint(nest_coords):
             x1, y1, x2, y2 = nest_coords
             midpoint_x = (x1 + x2) / 2
@@ -1173,10 +1175,10 @@ class NestDetector:
         states = nest.iloc[index]['state']
         coordinates = nest.iloc[index]['coordinates']
         
-        # Filter for nest_hole class (2.0)
+        # Filter for nest_tube class 
         nest_coords = []
         for i in range(len(states)):
-            if states[i] == 2.0:
+            if states[i] == nest_tube_class:
                 nest_coords.append(coordinates[i])
         
         return [get_midpoint(nest_hole) for nest_hole in nest_coords]
