@@ -10,7 +10,7 @@ dist/
 *.egg-info/
 
 # Local runs / outputs
-outputs/
+output/
 logs/
 
 # Model weights and datasets

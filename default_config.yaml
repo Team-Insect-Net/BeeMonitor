@@ -49,8 +49,8 @@ nest_grid:
   reference_path: "/Users/edwardamoah/Documents/GitHub/BeeMonitor/tests/2024-05-16_18_10_00_nest_reference.png"     # Path to reference frame (if use_reference: true)
   
   expected_columns: 10
-  min_nests_per_row: 6
-  row_tolerance: 15
+  expected_rows: 6
+  #row_tolerance: 15
   fill_missing: true
   auto_detect_rows: true
 
@@ -68,12 +68,11 @@ nest:
   hotel_class : 1  # Class ID for hotel detection
   nest_width: 38  # Width of nest hole in pixels
   nest_height: 28  # Height of nest hole in pixels
-  padding:
-    x: 5  # Horizontal padding for nest boxes
-    y: 7  # Vertical padding for nest boxes
-  hotel_padding:
-    x: 100  # Horizontal padding for hotel ROI
-    y: 50  # Vertical padding for hotel ROI
+  padding_x: 5  # Horizontal padding for nest boxes
+  padding_y: 7  # Vertical padding for nest boxes
+  hotel_padding_x: 100  # Horizontal padding for hotel ROI
+  hotel_padding_y: 50  # Vertical padding for hotel ROI
+
 
 # Event processing parameters
 processing:

@@ -189,40 +189,27 @@ class BeeMonitor:
     
     def __init__(
         self,
-        nest_model_path: str,
-        tracking_model_path: str,
-        res_height: int = 720,
-        res_width: int = 1280,
         config: Optional[Config] = None
     ):
         """Initialize BeeMonitor with model paths and configuration.
         
         Args:
-            nest_model_path: Path to nest detection YOLO model
-            tracking_model_path: Path to bee tracking YOLO model
-            res_height: Video resolution height (default: 720)
-            res_width: Video resolution width (default: 1280)
             config: Configuration object (default: None, uses default config)
+
+            use config defualt to initialize settings if config is None
         
         Raises:
             FileNotFoundError: If model files don't exist
             ValueError: If resolution values are invalid
         """
-        # Validate inputs
-        if res_height <= 0 or res_width <= 0:
-            raise ValueError("Resolution must be positive")
-        
-        # Load models
-        logger.info(f"Loading nest detection model from {nest_model_path}")
-        self.nest_model = YOLO(nest_model_path)
-        
-        logger.info(f"Loading tracking model from {tracking_model_path}")
-        self.tracking_model = YOLO(tracking_model_path)
-        
-        # Store configuration
-        self.config = config if config is not None else Config.default()
-        self.res_height = res_height
-        self.res_width = res_width
+        if config is None:
+            config = Config.default()
+        self.config = config
+        self.res_height = config.video.res_height
+        self.res_width = config.video.res_width
+        self.nest_model = YOLO(config.models.nest_detection)
+        self.tracking_model = YOLO(config.models.tracking)
+
         
         logger.info("BeeMonitor initialized successfully")
     
@@ -334,129 +321,34 @@ class BeeMonitor:
         
         return results
     
-    # def get_nest_detection(self, video_path: str) -> pd.DataFrame:
-    #     """Detect nests in the video.
-        
-    #     This method will use the nest_detector module to find and identify
-    #     nest holes in the bee hotel.
-        
-    #     Args:
-    #         video_path: Path to video file
-            
-    #     Returns:
-    #         DataFrame with nest detection results
-            
-    #     Note:
-    #         This is a placeholder that will be implemented when we create
-    #         the detection module.
-    #     """
-    #     # Import here to avoid circular imports
-    #     # This will be implemented when we create the detection module
-    #     from beemonitor.detection.nest_detector import NestDetector
-        
-    #     detector = NestDetector(
-    #         model=self.nest_model,
-    #         config=self.config
-    #     )
-        
-    #     return detector.detect_nests(
-    #         video_path=video_path,
-    #         res_height=self.res_height,
-    #         res_width=self.res_width
-    #     )
-    # def get_nest_detection(self, video_path: str) -> pd.DataFrame:
-    #     """Detect nests using robust detector."""
-    #     from beemonitor.detection.robust_nest_detector import (
-    #         RobustNestDetector, GridConfig
-    #     )
-        
-    #     # Create grid config from settings
-    #     grid_config = GridConfig(
-    #         rows=self.config.nest_grid.rows,
-    #         columns=self.config.nest_grid.columns,
-    #         expected_total=self.config.nest_grid.expected_total,
-    #         tolerance=self.config.nest_grid.tolerance
-    #     )
-        
-    #     # Use robust detector
-    #     detector = RobustNestDetector(
-    #         model=self.nest_model,
-    #         config=self.config,
-    #         grid_config=grid_config
-    #     )
-        
-    #     if self.config.nest_grid.use_reference and self.config.nest_grid.reference_path:
-    #         # Match to reference
-    #         return detector.match_to_reference(
-    #             video_path,
-    #             self.config.nest_grid.reference_path,
-    #             self.res_height,
-    #             self.res_width
-    #         )
-    #     else:
-    #         # Exhaustive detection
-    #         return detector.detect_nests_exhaustive(
-    #             video_path,
-    #             self.res_height,
-    #             self.res_width,
-    #             max_frames=self.config.nest_grid.max_frames_to_scan
-    #         )
+    
 
-    def get_nest_detection(self, video_path: str) -> pd.DataFrame:
+    def get_nest_detections(self, video_path: str) -> pd.DataFrame:
         """Detect nests using improved robust detector."""
-        from beemonitor.detection.improved_nest_detector import (
-            ImprovedNestDetector, GridConfig
+        from beemonitor.detection.nest_detector import (
+            NestDetector
         )
         logger.info("Starting nest detection with improved detector")
-        
-        # Create grid config
-        grid_config = GridConfig(
-            expected_columns=10,  # 10 columns per row
-            min_nests_per_row=6,
-            row_tolerance=15,
-            fill_missing=True,
-            auto_detect_rows=True
-        )
+
         
         # Initialize detector
-        detector = ImprovedNestDetector(
+        detector = NestDetector(
             model=self.nest_model,
-            config=self.config,
-            grid_config=grid_config
+            config = self.config
         )
-        
+            
         # Detect and assign IDs
-        nest_with_ids = detector.detect_and_assign_ids(
+        nests = detector.get_nest_detections(
             video_path=video_path,
-            res_height=self.res_height,
-            res_width=self.res_width,
-            max_frames=1000
+            # res_height=self.res_height,
+            # res_width=self.res_width
         )
+
         
-        # Save reference frame
-        #reference_folder = Path(self.config.output.base_folder) / "nest_references"
-        #reference_folder.mkdir(parents=True, exist_ok=True)
-        vd = video_path.split("/")[-1].split(".mp4")[0]
-        reference_path = os.path.join(
-            self.config.output.base_folder,
-            f"{vd}_nest_reference.png"
-        )
-        
-        detector.save_reference_frame(
-            video_path=video_path,
-            nest_with_ids=nest_with_ids,
-            output_path=reference_path,
-            res_width=self.res_width,
-            res_height=self.res_height
-        )
-        
-        logger.info(f"Saved reference: {reference_path}")
-        
-        # Convert to DataFrame
-        df = detector.to_dataframe(nest_with_ids)
-        logger.info(f"Nest detection complete: {len(nest_with_ids)} nests")
-        
-        return df
+    
+        return nests
+    
+
     
     # def process_nest_detection(
     #     self,
