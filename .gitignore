@@ -25,4 +25,7 @@ IMPLEMENTATION_GUIDE.md
 installation.py
 VIS*
 
-videos/site_mendels/*.mp4
+videos/*
+#site_mendels/*.mp4
+
+runs

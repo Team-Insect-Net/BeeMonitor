@@ -5,6 +5,7 @@
 # """
 
 # import logging
+# import traceback
 # from typing import Dict, List, Tuple, Optional
 # import cv2
 # import numpy as np
@@ -55,6 +56,7 @@
     
 #     def detect_nests(
 #         self,
+#         reference_frame: int,
 #         video_path: str,
 #         res_height: int,
 #         res_width: int
@@ -65,6 +67,7 @@
 #         Continues until sufficient detections are found (typically ~60).
         
 #         Args:
+#             reference_frame: Frame number to start detection from
 #             video_path: Path to video file
 #             res_height: Target frame height
 #             res_width: Target frame width
@@ -81,61 +84,56 @@
 #         if not cap.isOpened():
 #             raise ValueError(f"Cannot open video: {video_path}")
         
-#         frame_counter = 0
+#         frame_counter = reference_frame
 #         nest_detections = [[]]
 #         nest_state = []
 #         frames = []
 #         confs = []
         
-#         min_detections = self.config.nest.min_detections
-#         frame_skip = self.config.nest.frame_skip
 #         confidence_threshold = self.config.nest.confidence_threshold
         
-#         logger.info(f"Starting nest detection (target: {min_detections} detections)")
+#         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_counter)
         
-#         while len(nest_detections[0]) < min_detections:
-#             # Set frame position
-#             cap.set(cv2.CAP_PROP_POS_FRAMES, frame_counter)
-            
-#             # Read frame
-#             success, frame = cap.read()
-            
-#             if not success:
-#                 logger.warning(f"Could not read frame {frame_counter}, stopping detection")
-#                 break
-            
-#             # Resize frame
-#             frame = cv2.resize(frame, (res_width, res_height))
-            
-#             logger.debug(f"Processing frame {frame_counter}")
-            
-#             # Run YOLO inference
-#             results = self.model.predict(frame, conf=confidence_threshold, verbose=False)
-            
-#             # Extract detections
-#             boxes = results[0].boxes.xyxy.tolist()
-#             boxes = [(x, y, x1, y1) for (x, y, x1, y1) in boxes]
-#             nest_detections = [boxes]
-            
-#             # Extract labels
-#             labels = results[0].boxes.cls.tolist()
-#             nest_state = [labels]
-            
-#             # Extract confidence scores
-#             conf = results[0].boxes.conf.tolist()
-#             confs = [conf]
-            
-#             frames = [frame_counter]
-            
-#             # Skip frames
-#             frame_counter += frame_skip
+#         # Read frame
+#         success, frame = cap.read()
+
+#         if not success:
+#             return pd.DataFrame({
+#                 'frame': [reference_frame],
+#                 'coordinates': [[]],
+#                 'state': [[]],
+#                 'confidence': [[]]
+#             })
+        
+#         # if not success:
+#         #     logger.warning(f"Could not read frame {frame_counter}, stopping detection")
+#         #     break
+        
+#         # Resize frame
+#         frame = cv2.resize(frame, (res_width, res_height))
+        
+#         logger.debug(f"Processing frame {frame_counter}")
+        
+#         # Run YOLO inference
+#         results = self.model.predict(frame, conf=confidence_threshold, verbose=False)
+        
+#         # Extract detections
+#         boxes = results[0].boxes.xyxy.tolist()
+#         boxes = [(x, y, x1, y1) for (x, y, x1, y1) in boxes]
+#         nest_detections = [boxes]
+        
+#         # Extract labels
+#         labels = results[0].boxes.cls.tolist()
+#         nest_state = [labels]
+        
+#         # Extract confidence scores
+#         conf = results[0].boxes.conf.tolist()
+#         confs = [conf]
+        
+#         frames = [frame_counter]
         
 #         cap.release()
         
-#         # Save first frame for visualization
-#         self._save_frame(video_path, frame, 0)
-        
-#         logger.info(f"Detected {len(nest_detections[0])} nests in frame {frames[0]}")
         
 #         nest_df = pd.DataFrame({
 #             'frame': frames,
@@ -183,12 +181,16 @@
 #         # Extract nest coordinates
 #         nest_coords = self._get_nest_coordinates(nest_detection)
 #         logger.debug(f"Extracted {len(nest_coords)} nest coordinates")
+
+#         # Get scaled parameters for this resolution
+#         row_threshold = self.config.nest.row_threshold(res_width, res_height)
+#         col_threshold = self.config.nest.col_threshold(res_width, res_height)
         
 #         # Cluster into rows
 #         dl_rows = self._cluster_points(
 #             nest_coords,
-#             row_threshold=self.config.nest.row_threshold,
-#             col_threshold=self.config.nest.col_threshold
+#             row_threshold=row_threshold,
+#             col_threshold=col_threshold,
 #         )
 #         logger.debug(f"Clustered into {len(dl_rows)} rows")
         
@@ -227,10 +229,10 @@
 #         hole_bottom = self._get_average_x([x[1] for x in fixed_dl_rows[-1]])
         
 #         # Hotel ROI with padding
-#         hx = max(0, hole_first - self.config.nest.hotel_padding_x)
-#         hy = max(0, hole_top - self.config.nest.hotel_padding_y)
-#         hx1 = min(res_width, hole_last + self.config.nest.hotel_padding_x)
-#         hy2 = min(res_height, hole_bottom + self.config.nest.hotel_padding_y)
+#         hx = max(0, hole_first - self.config.nest.hotel_padding_x(res_width, res_height))
+#         hy = max(0, hole_top - self.config.nest.hotel_padding_y(res_width, res_height))
+#         hx1 = min(res_width, hole_last + self.config.nest.hotel_padding_x(res_width, res_height))
+#         hy2 = min(res_height, hole_bottom + self.config.nest.hotel_padding_y(res_width, res_height))
         
 #         # Generate nest hole coordinates with IDs
 #         nest_ids = self._assign_nest_ids(fixed_dl_rows)
@@ -241,26 +243,36 @@
 #         }
         
 #         logger.info(f"Processed {len(nest_ids)} nests in hotel ROI")
+
+#         # Save visualization for debugging
+#         self._save_visualization(
+#             video_path,
+#             result,
+#             res_height,
+#             res_width
+#         )
+           
         
-#         # Save visualization
-#         self._save_visualization(video_path, result, res_height, res_width)
         
 #         return result
     
-#     def get_nest_detection(
+#     def get_nest_detections(
 #         self,
 #         video_path: str,
-#         res_height: int,
-#         res_width: int
-#     ) -> pd.DataFrame:
+#         # res_height: int,
+#         # res_width: int
+#     ) -> Optional[Dict]:
 #         """Combined method to get nest detection and processing.
 
 #         Takes the video path and resolution, runs detection and processing,
-#         1. Detects nests in the video, starting from the first frame.
-#         2. Processes the detections to identify individual nest holes and assign IDs.
-#         3. If the prcocessed nests are successfully identified and meets quality criteria, then the dataframe of nest detections is returned.
-#         4. If the nest detection or processing fails to meet quality criteria, then it will run the detection again on subsequent frames until successful detection is achieved or maximum frames are reached.
-#         5. If maximum frames are reached without successful detection, it returns None.
+#         with quality checks and retries if needed.
+        
+#         Process:
+#         1. Detects nests in the video, starting from the first frame
+#         2. Processes the detections to identify individual nest holes and assign IDs
+#         3. If the processed nests meet quality criteria, returns the result
+#         4. If quality check fails, runs detection again on subsequent frames
+#         5. If maximum attempts reached without success, returns None
         
 #         Args:
 #             video_path: Path to video file
@@ -268,34 +280,243 @@
 #             res_width: Frame width  
 
 #         Returns:
-#             DataFrame with nest detections
+#             Dictionary with nest information if successful, None otherwise
+            
+#         Example:
+#             >>> nests = detector.get_nest_detection("video.mp4", 720, 1280)
+#             >>> if nests is not None:
+#             >>>     print(f"Successfully detected {len(nests['nests'])} nests")
 #         """
+#         max_attempts = self.config.nest.max_detection_attempts
 
+#         res_height = self.config.video.res_height
+#         res_width = self.config.video.res_width
+
+#         min_detections = self.config.nest.min_detections 
+        
+#         logger.info(f"Starting nest detection pipeline (max attempts: {max_attempts})")
+
+#         reference_frame = 0
+        
+#         for attempt in range(max_attempts):
+#             try:
+#                 logger.info(f"Detection attempt {attempt + 1}/{max_attempts}")
+                
+#                 # Run detection
+#                 nest_detection = self.detect_nests(reference_frame, video_path, res_height, res_width)
+
+#                 if not nest_detection.empty:
+#                     num_detections = len(nest_detection.iloc[0]['coordinates'])
+#                     reference_frame = nest_detection.iloc[0]['frame']
+#                 else:
+#                     num_detections = 0
+
+#                 if num_detections < min_detections:
+#                     logger.warning(
+#                         f"Attempt {attempt + 1}: Insufficient detections "
+#                         f"({num_detections} found, {min_detections} required)"
+#                     )
+#                     # Skip ahead more frames if too few detections
+#                     reference_frame += self.config.nest.frame_skip 
+#                     continue
+
+#                 # Process detections
+#                 processed_nests = self.process_detections(
+#                     video_path,
+#                     nest_detection,
+#                     res_height,
+#                     res_width
+#                 )
+                
+#                 # Check quality
+#                 if self._check_nest_quality(processed_nests):
+#                     logger.info(f"Successful nest detection on attempt {attempt + 1}")
+
+#                     # save reference frame with nests
+#                     self._save_visualization(
+#                         video_path=video_path,
+#                         nest_ids=processed_nests,
+#                         res_height=res_height,
+#                         res_width=res_width, 
+#                     )
+
+#                     return processed_nests
+#                 else:
+#                     logger.warning(f"Attempt {attempt + 1}: Quality check failed")
+#                     # Move to next frame for next attempt
+#                     reference_frame += self.config.nest.frame_skip 
+#                     continue
+                    
+#             except Exception as e:
+#                 logger.error(f"Attempt {attempt + 1} failed with error: {e}")
+#                 # print traceback for debugging
+#                 logger.warning(traceback.format_exc())
+#                 continue
+        
+#         logger.error(f"Failed to detect nests after {max_attempts} attempts")
 #         return None
     
 #     def _check_nest_quality(
 #         self,
-#         nest_detection: pd.DataFrame
+#         processed_nests: Dict
 #     ) -> bool:
 #         """Check if nest detection meets quality criteria.
 
-#         Criteria could include:
-#         - There should be exactly a number of nest holes detected as defined in config
-#         - There should be exactly a number of rows as defined in config
-#         - There should be exactly a number of columns as defined in config
-#         - The x spacing between nests in a rows should be consistent (within tolerance as define in config)
-#         - The y position of nests in a row should be consistent (within tolerance as define in config)
-#         - There nest id are number from 1 to total number of nests without missing ids. All ids should be unique.
-#         - All nestid in the same column (i.e., 1, 11, 21,...) should have similar x position (within tolerance as defined in config)
+#         Validates the processed nest detection against multiple quality criteria:
+#         - Correct total number of nests (within tolerance)
+#         - Correct number of rows
+#         - Correct number of nests per row
+#         - Consistent horizontal spacing between nests in rows
+#         - Consistent vertical position within each row
+#         - Sequential nest IDs without gaps (1, 2, 3, ..., N)
+#         - Consistent vertical alignment of nests in same column
         
 #         Args:
-#             nest_detection: DataFrame with nest detections
+#             processed_nests: Dictionary with 'hotel' and 'nests' keys
+            
 #         Returns:
-#             True if quality criteria met, False otherwise
+#             True if all quality criteria are met, False otherwise
 #         """
 
+#         if not processed_nests or 'nests' not in processed_nests:
+#             logger.warning("Quality check failed: Invalid nest structure")
+#             return False
         
-
+#         nests = processed_nests['nests']
+        
+#         if not nests:
+#             logger.warning("Quality check failed: No nests found")
+#             return False
+        
+#         # 1. Check total number of nests
+#         total_nests = len(nests)
+#         expected_total = self.config.nest.expected_total_nests
+#         nest_count_tolerance = self.config.nest.nest_count_tolerance
+        
+#         if abs(total_nests - expected_total) > nest_count_tolerance:
+#             logger.warning(
+#                 f"Quality check failed: Expected {expected_total} nests "
+#                 f"(±{nest_count_tolerance}), got {total_nests}"
+#             )
+#             return False
+        
+#         # 2. Check nest IDs are sequential and unique
+#         nest_ids = sorted([int(nid) for nid in nests.keys()])
+#         expected_ids = list(range(1, total_nests + 1))
+        
+#         if nest_ids != expected_ids:
+#             missing_ids = set(expected_ids) - set(nest_ids)
+#             extra_ids = set(nest_ids) - set(expected_ids)
+#             logger.warning(
+#                 f"Quality check failed: Non-sequential IDs. "
+#                 f"Missing: {missing_ids}, Extra: {extra_ids}"
+#             )
+#             return False
+        
+#         # 3. Organize nests by rows
+#         nests_per_row = self.config.nest.expected_nests_per_row
+#         expected_rows = self.config.nest.expected_rows
+        
+#         rows = {}
+#         for nest_id, bbox in nests.items():
+#             row_num = (int(nest_id) - 1) // nests_per_row
+#             if row_num not in rows:
+#                 rows[row_num] = []
+#             rows[row_num].append((int(nest_id), bbox))
+        
+#         # Check number of rows
+#         if len(rows) != expected_rows:
+#             logger.warning(
+#                 f"Quality check failed: Expected {expected_rows} rows, "
+#                 f"got {len(rows)}"
+#             )
+#             return False
+        
+#         # 4. Check each row has correct number of nests
+#         for row_num, row_nests in rows.items():
+#             if len(row_nests) != nests_per_row:
+#                 logger.warning(
+#                     f"Quality check failed: Row {row_num} has {len(row_nests)} nests, "
+#                     f"expected {nests_per_row}"
+#                 )
+#                 return False
+        
+#         # 5. Check horizontal spacing consistency within rows
+#         spacing_tolerance = self.config.nest.spacing_tolerance(self.config.video.res_width, self.config.video.res_height)
+        
+#         for row_num, row_nests in rows.items():
+#             # Sort by nest ID
+#             row_nests = sorted(row_nests, key=lambda x: x[0])
+            
+#             # Calculate x-positions (center of bboxes)
+#             x_positions = []
+#             for _, bbox in row_nests:
+#                 x_center = (bbox[0] + bbox[2]) / 2
+#                 x_positions.append(x_center)
+            
+#             # Calculate spacing between consecutive nests
+#             spacings = [x_positions[i+1] - x_positions[i] for i in range(len(x_positions)-1)]
+            
+#             if len(spacings) > 0:
+#                 avg_spacing = np.mean(spacings)
+                
+#                 # Check all spacings are within tolerance
+#                 for i, spacing in enumerate(spacings):
+#                     if abs(spacing - avg_spacing) > spacing_tolerance:
+#                         logger.warning(
+#                             f"Quality check failed: Row {row_num} has inconsistent spacing. "
+#                             f"Gap {i}: {spacing:.1f}, Average: {avg_spacing:.1f}"
+#                         )
+#                         return False
+        
+#         # 6. Check vertical position consistency within rows
+#         y_tolerance = self.config.nest.y_position_tolerance
+        
+#         for row_num, row_nests in rows.items():
+#             # Calculate y-positions (center of bboxes)
+#             y_positions = []
+#             for _, bbox in row_nests:
+#                 y_center = (bbox[1] + bbox[3]) / 2
+#                 y_positions.append(y_center)
+            
+#             if len(y_positions) > 0:
+#                 avg_y = np.mean(y_positions)
+                
+#                 # Check all y-positions are within tolerance
+#                 for i, y_pos in enumerate(y_positions):
+#                     if abs(y_pos - avg_y) > y_tolerance:
+#                         logger.warning(
+#                             f"Quality check failed: Row {row_num} has inconsistent y-positions. "
+#                             f"Nest {i}: y={y_pos:.1f}, Average: {avg_y:.1f}"
+#                         )
+#                         return False
+        
+#         # 7. Check vertical alignment of columns
+#         x_tolerance = self.config.nest.x_position_tolerance
+        
+#         for col_num in range(nests_per_row):
+#             # Get all nests in this column (1, 11, 21, ...)
+#             column_nests = []
+#             for row_num in range(expected_rows):
+#                 nest_id = str(col_num + 1 + row_num * nests_per_row)
+#                 if nest_id in nests:
+#                     bbox = nests[nest_id]
+#                     x_center = (bbox[0] + bbox[2]) / 2
+#                     column_nests.append(x_center)
+            
+#             if len(column_nests) > 1:
+#                 avg_x = np.mean(column_nests)
+                
+#                 # Check all x-positions are within tolerance
+#                 for i, x_pos in enumerate(column_nests):
+#                     if abs(x_pos - avg_x) > x_tolerance:
+#                         logger.warning(
+#                             f"Quality check failed: Column {col_num + 1} has inconsistent alignment. "
+#                             f"Row {i}: x={x_pos:.1f}, Average: {avg_x:.1f}"
+#                         )
+#                         return False
+        
+#         logger.info("All quality checks passed")
 #         return True
     
 #     def _get_nest_coordinates(
@@ -312,6 +533,8 @@
 #         Returns:
 #             List of (x, y) midpoints
 #         """
+
+#         nest_tube_class = self.config.nest.nest_tube_class
 #         def get_midpoint(nest_coords):
 #             x1, y1, x2, y2 = nest_coords
 #             midpoint_x = (x1 + x2) / 2
@@ -321,10 +544,10 @@
 #         states = nest.iloc[index]['state']
 #         coordinates = nest.iloc[index]['coordinates']
         
-#         # Filter for nest_hole class (2.0)
+#         # Filter for nest_tube class 
 #         nest_coords = []
 #         for i in range(len(states)):
-#             if states[i] == 2.0:
+#             if states[i] == nest_tube_class:
 #                 nest_coords.append(coordinates[i])
         
 #         return [get_midpoint(nest_hole) for nest_hole in nest_coords]
@@ -489,10 +712,15 @@
 #         Returns:
 #             Dictionary mapping nest IDs (str) to bounding boxes
 #         """
-#         width = self.config.nest.nest_width
-#         height = self.config.nest.nest_height
-#         pad_x = self.config.nest.padding_x
-#         pad_y = self.config.nest.padding_y
+#         # width = self.config.nest.nest_width
+#         # height = self.config.nest.nest_height
+#         # pad_x = self.config.nest.padding_x
+#         # pad_y = self.config.nest.padding_y
+
+#         width = self.config.nest.nest_width(self.config.video.res_width, self.config.video.res_height)
+#         height = self.config.nest.nest_height(self.config.video.res_width, self.config.video.res_height)
+#         pad_x = self.config.nest.padding_x(self.config.video.res_width, self.config.video.res_height)
+#         pad_y = self.config.nest.padding_y(self.config.video.res_width, self.config.video.res_height)
         
 #         nest_ids = {}
         
@@ -508,12 +736,12 @@
 #                     x + width // 2 + pad_x,
 #                     y + height // 2 + pad_y
 #                 )
+
                 
 #                 nest_ids[nest_id] = bbox
         
 #         return nest_ids
     
-
 #     def _save_frame(self, video_path: str, frame, frame_number: int) -> None:
 #         """Save a frame as an image file with proper error handling.
         
@@ -555,19 +783,6 @@
 #             logger.error(f"Error saving frame {frame_number}: {e}")
 #             # Don't raise exception - just log and continue
     
-#     # def _save_frame(self, video_path: str, frame: np.ndarray, frame_number: int) -> None:
-#     #     """Save a frame as an image file.
-        
-#     #     Args:
-#     #         video_path: Path to video file
-#     #         frame: Frame to save
-#     #         frame_number: Frame number for filename
-#     #     """
-#     #     output_folder = video_path.replace('.mp4', '_frames')
-#     #     filename = f"{output_folder}_frame_{frame_number:05d}.png"
-#     #     cv2.imwrite(filename, frame)
-#     #     logger.debug(f"Saved frame to {filename}")
-
 #     def _save_visualization(
 #         self,
 #         video_path: str,
@@ -575,74 +790,107 @@
 #         res_height: int,
 #         res_width: int
 #     ) -> None:
-#         return None
-    
-#     # def _save_visualization(
-#     #     self,
-#     #     video_path: str,
-#     #     nest_ids: Dict,
-#     #     res_height: int,
-#     #     res_width: int
-#     # ) -> None:
-#     #     """Save visualization of detected nests.
+#         """Save visualization of detected nests with IDs overlaid on frame.
         
-#     #     Args:
-#     #         video_path: Path to video file
-#     #         nest_ids: Dictionary with nest IDs and locations
-#     #         res_height: Frame height
-#     #         res_width: Frame width
-#     #     """
-#     #     # Load the saved frame
-#     #     frame_path = video_path.replace('.mp4', '_frames') + f"_frame_{0:05d}.png"
+#         Args:
+#             video_path: Path to video file
+#             nest_ids: Dictionary with 'hotel' and 'nests' keys
+#             res_height: Frame height
+#             res_width: Frame width
+#         """
+
+
+#         # load a frame from the video. Try the first frame if that doesn't work loop for 10 
         
-#     #     try:
-#     #         frame = cv2.imread(frame_path)
+#         cap = cv2.VideoCapture(video_path)
+#         frame = None
+#         for i in range(100):
+#             success, frame = cap.read()
+#             if success:
+#                 frame = cv2.resize(frame, (res_width, res_height))
+#                 break
+#         cap.release()
+        
+#         try:
+#             if frame is None or frame.size == 0:
+#                 logger.warning("Cannot save visualization: frame is empty or None")
+#                 return
             
-#     #         if frame is not None:
-#     #             # Draw nest IDs on frame
-#     #             for nest_id, bbox in nest_ids["nests"].items():
-#     #                 x1, y1, x2, y2 = bbox
-#     #                 cv2.rectangle(
-#     #                     frame,
-#     #                     (int(x1), int(y1)),
-#     #                     (int(x2), int(y2)),
-#     #                     (0, 255, 0),
-#     #                     2
-#     #                 )
-#     #                 cv2.putText(
-#     #                     frame,
-#     #                     nest_id,
-#     #                     (int(x1), int(y1) - 10),
-#     #                     cv2.FONT_HERSHEY_SIMPLEX,
-#     #                     0.5,
-#     #                     (0, 255, 0),
-#     #                     2
-#     #                 )
-                
-#     #             # Save annotated frame
-#     #             output_folder = video_path.replace('.mp4', '_annotated_frames')
-#     #             filename = f"{output_folder}_frame_{10000:05d}.png"
-#     #             cv2.imwrite(filename, frame)
-#     #             logger.info(f"Saved nest visualization to {filename}")
+#             # Draw hotel ROI
+#             if 'hotel' in nest_ids:
+#                 hx, hy, hx1, hy2 = nest_ids['hotel']
+#                 cv2.rectangle(
+#                     frame,
+#                     (int(hx), int(hy)),
+#                     (int(hx1), int(hy2)),
+#                     (255, 0, 0),  # Blue for hotel boundary
+#                     3
+#                 )
+#                 cv2.putText(
+#                     frame,
+#                     "Hotel ROI",
+#                     (int(hx), int(hy) - 10),
+#                     cv2.FONT_HERSHEY_SIMPLEX,
+#                     0.7,
+#                     (255, 0, 0),
+#                     2
+#                 )
+            
+#             # Draw nest IDs and bounding boxes
+#             if 'nests' in nest_ids:
+#                 for nest_id, bbox in nest_ids["nests"].items():
+#                     x1, y1, x2, y2 = bbox
+                    
+#                     # Draw rectangle
+#                     cv2.rectangle(
+#                         frame,
+#                         (int(x1), int(y1)),
+#                         (int(x2), int(y2)),
+#                         (0, 255, 0),  # Green for nests
+#                         2
+#                     )
+                    
+#                     # Draw nest ID
+#                     cv2.putText(
+#                         frame,
+#                         nest_id,
+#                         (int(x1), int(y1) - 5),
+#                         cv2.FONT_HERSHEY_SIMPLEX,
+#                         0.5,
+#                         (0, 255, 0),
+#                         2
+#                     )
+            
+#             # Save annotated frame
+#             output_folder = self.config.output.base_folder
+#             file = video_path.split("/")[-1].replace('.mp4', '.png')
+#             filename = f"{output_folder}/nests_visualization_{file}"
+            
+#             # Ensure parent directory exists
+#             from pathlib import Path
+#             Path(filename).parent.mkdir(parents=True, exist_ok=True)
+            
+#             success = cv2.imwrite(filename, frame)
+            
+#             if success:
+#                 logger.info(f"Saved nest visualization to {filename}")
+#             else:
+#                 logger.warning(f"Failed to save visualization to {filename}")
         
-#     #     except Exception as e:
-#     #         logger.warning(f"Could not save visualization: {e}")
+#         except Exception as e:
+#             logger.warning(f"Could not save visualization: {e}")
 
 
 
 
-
-
-
-
-
-"""Nest detection and processing module.
+"""Nest detection and processing module with resolution-aware parameters.
 
 This module handles detecting nest holes in bee hotel videos and processing
 them to identify individual nest locations with IDs.
 """
 
 import logging
+import traceback
 from typing import Dict, List, Tuple, Optional
 import cv2
 import numpy as np
@@ -661,13 +909,14 @@ BBox = Tuple[float, float, float, float]
 
 
 class NestDetector:
-    """Detector for bee hotel nests.
+    """Detector for bee hotel nests with resolution-aware parameters.
     
     This class handles nest detection and processing, including:
     - Running YOLO detection on video frames
     - Clustering detections into rows and columns
     - Fixing missing nest holes
     - Assigning unique IDs to each nest
+    - All pixel-based parameters automatically scale with resolution
     
     Attributes:
         model: YOLO model for nest detection
@@ -713,7 +962,7 @@ class NestDetector:
             DataFrame with columns: frame, coordinates, state, confidence
             
         Example:
-            >>> detections = detector.detect_nests("video.mp4", 720, 1280)
+            >>> detections = detector.detect_nests(0, "video.mp4", 720, 1280)
             >>> print(f"Found {len(detections.iloc[0]['coordinates'])} nests")
         """
         cap = cv2.VideoCapture(video_path)
@@ -742,10 +991,6 @@ class NestDetector:
                 'confidence': [[]]
             })
         
-        # if not success:
-        #     logger.warning(f"Could not read frame {frame_counter}, stopping detection")
-        #     break
-        
         # Resize frame
         frame = cv2.resize(frame, (res_width, res_height))
         
@@ -771,7 +1016,6 @@ class NestDetector:
         
         cap.release()
         
-        
         nest_df = pd.DataFrame({
             'frame': frames,
             'coordinates': nest_detections,
@@ -792,10 +1036,10 @@ class NestDetector:
         
         Takes raw nest detections and processes them to:
         1. Extract nest hole coordinates
-        2. Cluster into rows
+        2. Cluster into rows (with scaled thresholds)
         3. Fix missing holes
         4. Assign unique IDs
-        5. Calculate hotel ROI
+        5. Calculate hotel ROI (with scaled padding)
         
         Args:
             video_path: Path to video file
@@ -818,12 +1062,18 @@ class NestDetector:
         # Extract nest coordinates
         nest_coords = self._get_nest_coordinates(nest_detection)
         logger.debug(f"Extracted {len(nest_coords)} nest coordinates")
+
+        # Get scaled parameters for this resolution
+        row_threshold = self.config.nest.row_threshold(res_width, res_height)
+        col_threshold = self.config.nest.col_threshold(res_width, res_height)
+        
+        logger.debug(f"Using scaled parameters: row_threshold={row_threshold}, col_threshold={col_threshold}")
         
         # Cluster into rows
         dl_rows = self._cluster_points(
             nest_coords,
-            row_threshold=self.config.nest.row_threshold,
-            col_threshold=self.config.nest.col_threshold
+            row_threshold=row_threshold,
+            col_threshold=col_threshold,
         )
         logger.debug(f"Clustered into {len(dl_rows)} rows")
         
@@ -861,14 +1111,18 @@ class NestDetector:
         hole_top = self._get_average_x([x[1] for x in fixed_dl_rows[0]])
         hole_bottom = self._get_average_x([x[1] for x in fixed_dl_rows[-1]])
         
-        # Hotel ROI with padding
-        hx = max(0, hole_first - self.config.nest.hotel_padding_x)
-        hy = max(0, hole_top - self.config.nest.hotel_padding_y)
-        hx1 = min(res_width, hole_last + self.config.nest.hotel_padding_x)
-        hy2 = min(res_height, hole_bottom + self.config.nest.hotel_padding_y)
+        # Get scaled padding
+        hotel_pad_x = self.config.nest.hotel_padding_x(res_width, res_height)
+        hotel_pad_y = self.config.nest.hotel_padding_y(res_width, res_height)
         
-        # Generate nest hole coordinates with IDs
-        nest_ids = self._assign_nest_ids(fixed_dl_rows)
+        # Hotel ROI with padding
+        hx = max(0, hole_first - hotel_pad_x)
+        hy = max(0, hole_top - hotel_pad_y)
+        hx1 = min(res_width, hole_last + hotel_pad_x)
+        hy2 = min(res_height, hole_bottom + hotel_pad_y)
+        
+        # Generate nest hole coordinates with IDs (using scaled dimensions)
+        nest_ids = self._assign_nest_ids(fixed_dl_rows, res_width, res_height)
         
         result = {
             "hotel": (hx, hy, hx1, hy2),
@@ -876,24 +1130,12 @@ class NestDetector:
         }
         
         logger.info(f"Processed {len(nest_ids)} nests in hotel ROI")
-
-        # Save visualization for debugging
-        self._save_visualization(
-            video_path,
-            result,
-            res_height,
-            res_width
-        )
-           
-        
         
         return result
     
     def get_nest_detections(
         self,
         video_path: str,
-        # res_height: int,
-        # res_width: int
     ) -> Optional[Dict]:
         """Combined method to get nest detection and processing.
 
@@ -909,14 +1151,12 @@ class NestDetector:
         
         Args:
             video_path: Path to video file
-            res_height: Frame height
-            res_width: Frame width  
 
         Returns:
             Dictionary with nest information if successful, None otherwise
             
         Example:
-            >>> nests = detector.get_nest_detection("video.mp4", 720, 1280)
+            >>> nests = detector.get_nest_detection("video.mp4")
             >>> if nests is not None:
             >>>     print(f"Successfully detected {len(nests['nests'])} nests")
         """
@@ -928,6 +1168,7 @@ class NestDetector:
         min_detections = self.config.nest.min_detections 
         
         logger.info(f"Starting nest detection pipeline (max attempts: {max_attempts})")
+        logger.info(f"Resolution: {res_width}x{res_height}")
 
         reference_frame = 0
         
@@ -961,8 +1202,8 @@ class NestDetector:
                     res_width
                 )
                 
-                # Check quality
-                if self._check_nest_quality(processed_nests):
+                # Check quality (pass resolution for scaled tolerances)
+                if self._check_nest_quality(processed_nests, res_width, res_height):
                     logger.info(f"Successful nest detection on attempt {attempt + 1}")
 
                     # save reference frame with nests
@@ -982,6 +1223,7 @@ class NestDetector:
                     
             except Exception as e:
                 logger.error(f"Attempt {attempt + 1} failed with error: {e}")
+                logger.warning(traceback.format_exc())
                 continue
         
         logger.error(f"Failed to detect nests after {max_attempts} attempts")
@@ -989,7 +1231,9 @@ class NestDetector:
     
     def _check_nest_quality(
         self,
-        processed_nests: Dict
+        processed_nests: Dict,
+        res_width: int,
+        res_height: int
     ) -> bool:
         """Check if nest detection meets quality criteria.
 
@@ -997,13 +1241,15 @@ class NestDetector:
         - Correct total number of nests (within tolerance)
         - Correct number of rows
         - Correct number of nests per row
-        - Consistent horizontal spacing between nests in rows
-        - Consistent vertical position within each row
+        - Consistent horizontal spacing between nests in rows (scaled)
+        - Consistent vertical position within each row (scaled)
         - Sequential nest IDs without gaps (1, 2, 3, ..., N)
-        - Consistent vertical alignment of nests in same column
+        - Consistent vertical alignment of nests in same column (scaled)
         
         Args:
             processed_nests: Dictionary with 'hotel' and 'nests' keys
+            res_width: Frame width for scaling parameters
+            res_height: Frame height for scaling parameters
             
         Returns:
             True if all quality criteria are met, False otherwise
@@ -1072,8 +1318,10 @@ class NestDetector:
                 )
                 return False
         
-        # 5. Check horizontal spacing consistency within rows
-        spacing_tolerance = self.config.nest.spacing_tolerance
+        # 5. Check horizontal spacing consistency within rows (SCALED)
+        spacing_tolerance = self.config.nest.spacing_tolerance(res_width, res_height)
+        
+        logger.debug(f"Using scaled spacing_tolerance: {spacing_tolerance}")
         
         for row_num, row_nests in rows.items():
             # Sort by nest ID
@@ -1096,12 +1344,15 @@ class NestDetector:
                     if abs(spacing - avg_spacing) > spacing_tolerance:
                         logger.warning(
                             f"Quality check failed: Row {row_num} has inconsistent spacing. "
-                            f"Gap {i}: {spacing:.1f}, Average: {avg_spacing:.1f}"
+                            f"Gap {i}: {spacing:.1f}, Average: {avg_spacing:.1f}, "
+                            f"Tolerance: {spacing_tolerance:.1f}"
                         )
                         return False
         
-        # 6. Check vertical position consistency within rows
-        y_tolerance = self.config.nest.y_position_tolerance
+        # 6. Check vertical position consistency within rows (SCALED)
+        y_tolerance = self.config.nest.y_position_tolerance(res_width, res_height)
+        
+        logger.debug(f"Using scaled y_tolerance: {y_tolerance}")
         
         for row_num, row_nests in rows.items():
             # Calculate y-positions (center of bboxes)
@@ -1118,12 +1369,15 @@ class NestDetector:
                     if abs(y_pos - avg_y) > y_tolerance:
                         logger.warning(
                             f"Quality check failed: Row {row_num} has inconsistent y-positions. "
-                            f"Nest {i}: y={y_pos:.1f}, Average: {avg_y:.1f}"
+                            f"Nest {i}: y={y_pos:.1f}, Average: {avg_y:.1f}, "
+                            f"Tolerance: {y_tolerance:.1f}"
                         )
                         return False
         
-        # 7. Check vertical alignment of columns
-        x_tolerance = self.config.nest.x_position_tolerance
+        # 7. Check vertical alignment of columns (SCALED)
+        x_tolerance = self.config.nest.x_position_tolerance(res_width, res_height)
+        
+        logger.debug(f"Using scaled x_tolerance: {x_tolerance}")
         
         for col_num in range(nests_per_row):
             # Get all nests in this column (1, 11, 21, ...)
@@ -1143,7 +1397,8 @@ class NestDetector:
                     if abs(x_pos - avg_x) > x_tolerance:
                         logger.warning(
                             f"Quality check failed: Column {col_num + 1} has inconsistent alignment. "
-                            f"Row {i}: x={x_pos:.1f}, Average: {avg_x:.1f}"
+                            f"Row {i}: x={x_pos:.1f}, Average: {avg_x:.1f}, "
+                            f"Tolerance: {x_tolerance:.1f}"
                         )
                         return False
         
@@ -1166,6 +1421,7 @@ class NestDetector:
         """
 
         nest_tube_class = self.config.nest.nest_tube_class
+        
         def get_midpoint(nest_coords):
             x1, y1, x2, y2 = nest_coords
             midpoint_x = (x1 + x2) / 2
@@ -1193,8 +1449,8 @@ class NestDetector:
         
         Args:
             points: List of (x, y) points
-            row_threshold: Y-distance threshold for row clustering
-            col_threshold: X-distance threshold for column clustering
+            row_threshold: Y-distance threshold for row clustering (scaled)
+            col_threshold: X-distance threshold for column clustering (scaled)
             
         Returns:
             List of rows, where each row is a list of points
@@ -1334,19 +1590,29 @@ class NestDetector:
         
         return new_row_coords
     
-    def _assign_nest_ids(self, rows: List[List[Point]]) -> Dict[str, BBox]:
-        """Assign unique IDs to each nest and calculate bounding boxes.
+    def _assign_nest_ids(
+        self,
+        rows: List[List[Point]],
+        res_width: int,
+        res_height: int
+    ) -> Dict[str, BBox]:
+        """Assign unique IDs to each nest and calculate bounding boxes with scaled dimensions.
         
         Args:
             rows: List of rows, each containing nest points
+            res_width: Frame width for scaling
+            res_height: Frame height for scaling
             
         Returns:
             Dictionary mapping nest IDs (str) to bounding boxes
         """
-        width = self.config.nest.nest_width
-        height = self.config.nest.nest_height
-        pad_x = self.config.nest.padding_x
-        pad_y = self.config.nest.padding_y
+        # Get scaled nest dimensions
+        width = self.config.nest.nest_width(res_width, res_height)
+        height = self.config.nest.nest_height(res_width, res_height)
+        pad_x = self.config.nest.padding_x(res_width, res_height)
+        pad_y = self.config.nest.padding_y(res_width, res_height)
+        
+        logger.debug(f"Using scaled nest dimensions: width={width}, height={height}, pad_x={pad_x}, pad_y={pad_y}")
         
         nest_ids = {}
         
@@ -1423,10 +1689,7 @@ class NestDetector:
             res_height: Frame height
             res_width: Frame width
         """
-
-
-        # load a frame from the video. Try the first frame if that doesn't work loop for 10 
-        
+        # Load a frame from the video
         cap = cv2.VideoCapture(video_path)
         frame = None
         for i in range(100):

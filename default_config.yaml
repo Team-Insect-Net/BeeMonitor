@@ -27,7 +27,8 @@ detection:
   min_contour_area: 100  # Minimum contour area for motion detection
   aspect_ratio_min: 0.5  # Minimum aspect ratio for valid detections
   aspect_ratio_max: 2.0  # Maximum aspect ratio for valid detections
-  tracking_classes: [3]  # Classes to track (e.g., bees)
+  tracking_classes: [1]  # Classes to track {0: 'Diptera', 1: 'Hymenoptera', 2: 'Lepidoptera', 3: 'Coleoptera'}
+  yolo_classes : {0: 'Diptera', 1: 'Hymenoptera', 2: 'Lepidoptera', 3: 'Coleoptera'}
 
 
 # Nest grid structure (for consistent ID assignment)
