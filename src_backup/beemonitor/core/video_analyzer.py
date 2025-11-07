@@ -22,7 +22,6 @@ import re
 
 
 logger = logging.getLogger(__name__)
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 class AnalysisResults:
@@ -49,7 +48,7 @@ class AnalysisResults:
     def __init__(
         self,
         events: pd.DataFrame,
-        tracks: List, # trajectories
+        tracks: List,
         nests: Dict,
         video_path: str,
         motion_data: Optional[pd.DataFrame] = None
@@ -230,7 +229,7 @@ class BeeMonitor:
         self.res_width = config.video.res_width
         self.nest_model = YOLO(config.models.nest_detection)
         self.tracking_model = YOLO(config.models.tracking)
-        # self.classification_model = YOLO(config.models.bee_classification)
+        self.classification_model = YOLO(config.models.bee_classification)
 
         
         logger.info("BeeMonitor initialized successfully")
@@ -328,11 +327,6 @@ class BeeMonitor:
             visualize=visualize
         )
         
-        # Validate motion_data
-        if motion_data is None:
-            logger.warning("No motion tracking data returned, skipping video analysis")
-            return None
-        
         # Step 4: Process tracks to get events
         logger.info("Step 3/3: Processing tracks to identify events...")
         events = self.process_motion_tracking(motion_data, nests)
@@ -418,44 +412,55 @@ class BeeMonitor:
         logger.warning("No adjacent videos with valid nest detections found")
         return None
     
-
     def analyze_videos_in_folder(
         self,
-        video_folder: str,
+        folder_path: str,
         output_folder: Optional[str] = None,
-        visualize: bool = False,
-        max_workers: int = 4  # Number of parallel videos
+        visualize: Optional[bool] = None
     ) -> Dict[str, AnalysisResults]:
-        """Process multiple videos in parallel."""
+        """Analyze all videos in a specified folder.
 
-        if output_folder is None:
-            output_folder = self.config.output.base_folder
-
-        video_files = [str(Path(video_folder) / vf) for vf in os.listdir(video_folder) if vf.endswith(('.mp4', '.avi', '.mov'))]
-        #self._get_video_files(video_folder)
-        results = {}
+        Notes videos in the folder should all be from the same site/hotel.
         
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_video = {
-                executor.submit(
-                    self.analyze_video,
+        Args:
+            folder_path: Path to folder containing video files
+            output_folder: Directory for output files (default: from config)
+            visualize: Whether to save visualization videos (default: False)    
+
+        Returns:
+            Dictionary mapping video filenames to AnalysisResults   
+        """
+        video_files = [
+            str(f) for f in Path(folder_path).glob("*.mp4")
+        ]
+        
+        results = {}
+        for video_path in video_files:
+            print(f"Processing video: {video_path}")
+            try:
+                logger.info(f"Analyzing video: {video_path}")
+                analysis_result = self.analyze_video(
                     video_path,
                     output_folder=output_folder,
                     visualize=visualize
-                ): video_path
-                for video_path in video_files
-            }
-            
-            for future in as_completed(future_to_video):
-                video_path = future_to_video[future]
-                try:
-                    results[video_path] = future.result()
-                    logger.info(f"Completed: {video_path}")
-                except Exception as e:
-                    logger.error(f"Failed {video_path}: {e}")
-                    results[video_path] = None
+                )
+                if analysis_result is None:
+                    logger.warning(f"Analysis failed for video: {video_path} trying relative nests")
+                    results[video_path] = self.analyze_video_with_relative_nests(
+                        video_path,
+                        video_files,
+                        output_folder=output_folder,
+                        visualize=visualize
+                    )
+                else:
+                    results[video_path] = analysis_result
+            except Exception as e:
+                logger.error(f"Error analyzing video {video_path}: {e}")
+                results[video_path] = None
         
         return results
+    
+
     
 
     def get_nest_detections(self, video_path: str) -> pd.DataFrame:
@@ -607,7 +612,7 @@ class BeeMonitor:
             DataFrame with tracking results
         """
         # Import here to avoid circular imports
-        from beemonitor.detection.motion_tracking import MotionTracking as MotionDetector
+        from beemonitor.detection.motion_tracking import MotionDetector
         
         detector = MotionDetector(
             model=self.tracking_model,
@@ -637,11 +642,6 @@ class BeeMonitor:
         Returns:
             DataFrame with events (timestamp, nest, action)
         """
-        # Validate input
-        if motion_data is None:
-            logger.warning("motion_data is None, returning empty events DataFrame")
-            return pd.DataFrame(columns=['timestamp', 'nest_id', 'action', 'track_id', 'species'])
-        
         # Import here to avoid circular imports
         from beemonitor.processing.event_processor import EventProcessor
         
