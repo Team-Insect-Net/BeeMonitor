@@ -346,6 +346,9 @@ class NestDetector:
                     res_height,
                     res_width
                 )
+
+                # assing hotel box to config for motion tracking use later
+                self.config.hotel_box.hotel_box_cords = processed_nests['hotel']
                 
                 # Check quality
                 if self._check_nest_quality(processed_nests):

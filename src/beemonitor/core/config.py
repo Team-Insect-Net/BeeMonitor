@@ -20,6 +20,8 @@ class VideoConfig:
     res_height: int = 1080
     fps: int = 30
     auto_detect_from_video: bool = True  # Automatically detect FPS and resolution from video
+    annotation_mode: bool = True # Use annotation mode for visualization scaling
+    debug_mode : bool = False  # Enable debug mode for verbose logging
     
     def __post_init__(self):
         """Validate video configuration."""
@@ -102,6 +104,7 @@ class ModelConfig:
     """Model paths configuration."""
     nest_detection: str = "/Users/edwardamoah/Documents/GitHub/BeeMonitor/models/nest.pt"
     tracking: str = "/Users/edwardamoah/Documents/GitHub/BeeMonitor/models/bee_tracking.pt"
+    #tracking : str = "/Users/edwardamoah/Documents/GitHub/BeeMonitor/models/bee_tracking_back_up_Full_Mode.pt"
     classification: Optional[str] = None
 
 
@@ -123,6 +126,8 @@ class HotelBoxConfig:
     # 1.0 = reference distance
     # < 1.0 = hotel is closer (objects appear larger)
     # > 1.0 = hotel is farther (objects appear smaller)
+
+    hotel_box_cords: Optional[Tuple[int, int, int, int]] = None  # (x_min, y_min, x_max, y_max) in pixels
     
     # Auto-detection settings
     auto_detect_box: bool = True  # Auto-detect hotel box from first frames
@@ -471,82 +476,326 @@ class NestConfig:
         return pad_x, pad_y
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# @dataclass
+# class TrackingConfig:
+#     """Tracking configuration with hotel-aware scaling."""
+    
+#     # Reference resolution (baseline for parameter tuning)
+#     reference_width: int = 1920
+#     reference_height: int = 1080
+    
+#     # Base tracking parameters (at reference resolution/distance)
+#     max_age: int = 30
+#     no_motion_frames: int = 30
+#     track_start_id: int = 0
+    
+#     # Base distance thresholds
+#     distance_threshold_base: float = 80.0
+#     association_threshold_base: float = 200.0
+    
+#     # Motion detection base parameters (at reference resolution)
+#     motion_threshold: int = 25  # Threshold for frame difference
+#     min_contour_area_base: float = 100.0  # Minimum contour area in pixels
+#     aspect_ratio_min: float = 0.3  # Minimum aspect ratio for detections
+#     aspect_ratio_max: float = 3.0  # Maximum aspect ratio for detections
+    
+#     # Species tracking
+#     enable_species_tracking: bool = False
+#     label_map: Dict[int, str] = field(default_factory=lambda: {0: 'osmia_cornifrons'})
+
+#     tracking_classes: List[int] = field(default_factory=lambda: [0])  # Classes to track (e.g., bees and nest tubes)
+
+#     confidence_threshold: float = 0.5  # Confidence threshold for detections
+#     iou_threshold: float = 0.3  # IOU threshold for NMS
+
+#     enable_low_res_mode : bool = True  # Use optimized settings for low-res videos
+#     low_res_check_interval : int = 30  # Frames between low-res checks # make it based on fps of video (every 0.5 second)
+#     low_res_scale_factor : float = 0.5  # Scale factor for low-res processing
+
+#     fg_area_method : str = "pixels"  # Method for foreground area calculation ("fixed" or "adaptive")
+#     min_fg_area : float = 500.0  # Minimum foreground area for motion detection (in pixels or percentage)
+    
+#     def distance_threshold(self, width: int, height: int, hotel_box: Optional[HotelBoxConfig] = None) -> float:
+#         """Get scaled distance threshold for tracking association.
+        
+#         Args:
+#             width: Current frame width
+#             height: Current frame height
+#             hotel_box: Hotel box configuration (optional)
+            
+#         Returns:
+#             Scaled distance threshold in pixels
+#         """
+#         x_scale = width / self.reference_width
+#         if hotel_box is not None:
+#             x_scale *= hotel_box.get_scale_factor()
+#         return self.distance_threshold_base * x_scale
+    
+#     def association_threshold(self, width: int, height: int, hotel_box: Optional[HotelBoxConfig] = None) -> float:
+#         """Get scaled association threshold for track matching.
+        
+#         Args:
+#             width: Current frame width
+#             height: Current frame height
+#             hotel_box: Hotel box configuration (optional)
+            
+#         Returns:
+#             Scaled association threshold in pixels
+#         """
+#         x_scale = width / self.reference_width
+#         if hotel_box is not None:
+#             x_scale *= hotel_box.get_scale_factor()
+#         return self.association_threshold_base * x_scale
+    
+#     def min_contour_area(self, width: int, height: int, hotel_box: Optional[HotelBoxConfig] = None) -> float:
+#         """Get scaled minimum contour area for motion detection.
+        
+#         Args:
+#             width: Current frame width
+#             height: Current frame height
+#             hotel_box: Hotel box configuration (optional)
+            
+#         Returns:
+#             Scaled minimum contour area in square pixels
+#         """
+#         # Area scales with both x and y dimensions
+#         x_scale = width / self.reference_width
+#         y_scale = height / self.reference_height
+        
+#         if hotel_box is not None:
+#             distance_scale = hotel_box.get_scale_factor()
+#             x_scale *= distance_scale
+#             y_scale *= distance_scale
+        
+#         # Area scales quadratically
+#         area_scale = x_scale * y_scale
+#         return self.min_contour_area_base * area_scale
+
+
+"""Enhanced TrackingConfig for HyDaT tracking system.
+
+This module extends the TrackingConfig with additional parameters specific to
+the HyDaT (Hybrid Detection and Tracking) approach.
+"""
+
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Tuple
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 @dataclass
 class TrackingConfig:
-    """Tracking configuration with hotel-aware scaling."""
+    """Enhanced tracking configuration for HyDaT system with hotel-aware scaling.
     
-    # Reference resolution (baseline for parameter tuning)
+    This configuration includes all parameters needed for:
+    - Background subtraction (MOG2)
+    - Kalman filter tracking
+    - FG/BG segmentation
+    - Low-resolution processing
+    - Track validation
+    - YOLO confirmation strategy
+    """
+
+    debug_mode: bool = False  # Enable debug logging
+
+    viz_padding_frames: int = 15  # Visualization padding around tracks
+
+    track_full_frame = False  # Track in full frame vs hotel box (ROI)
+
+    min_blob_solidity = 0.75
+    max_blob_distance_from_hotel = 1800.0
+
+    max_frames_without_yolo: int = 10  # Periodic verification
+    force_yolo_on_no_blobs: bool = True  # YOLO when no blobs
+
+        # Enable/disable
+    adaptive_association: bool = True
+    
+    # Speed threshold for elliptical vs circular
+    stationary_speed_threshold: float = 5.0  # px/frame
+    
+    # Forward search scaling
+    max_speed_factor: float = 3.0  # Up to 4x base
+    
+    # Ellipse shape
+    lateral_search_ratio: float = 0.6   # 60% lateral
+    reverse_search_ratio: float = 0.8   # 80% reverse
+    
+    # Preference for forward matches
+    reverse_motion_penalty: float = 1.3  # 30% penalty
+    
+    # Feature matching importance
+    area_similarity_weight: float = 0.7  # 20% weight
+
+
+    # All optimized values now here
+    max_age: int = 60  # based on fps of video (should be 1 second)
+    association_threshold_base: float = 400.0  # Was 200.0
+    min_blob_aspect_ratio: float = 0.4  # NEW
+    max_blob_aspect_ratio: float = 2.5  # NEW
+    min_blob_area_pixels: float = 1500.0  # NEW # this should be based on resolution and hotel distance (We can use the detected hotel for reference of distance from camera)
+    max_blob_area_pixels: float = 10000.0  # NEW # same here and the other pixel-based parameters
+    new_track_distance_threshold: float = 50.0  # NEW
+    new_track_proximity_check: float = 100.0  # NEW
+    low_res_switch_threshold: int = 50  # NEW
+    kalman_process_noise: float = 0.15  # NEW
+    #min_confidence: float = 0.7  # NEW
+    min_track_length: int = 5  # NEW
+
+    
+    # ========================================
+    # REFERENCE RESOLUTION
+    # ========================================
     reference_width: int = 1920
     reference_height: int = 1080
     
-    # Base tracking parameters (at reference resolution/distance)
-    max_age: int = 30
-    no_motion_frames: int = 30
-    track_start_id: int = 0
+    # ========================================
+    # TRACK MANAGEMENT
+    # ========================================
+    max_age: int = 10  # Max frames without detection before track deletion
+    no_motion_frames: int = 15  # Frames without motion to consider inactive
+    track_start_id: int = 0  # Starting track ID
+    min_track_length: int = 5  # Minimum track length to be considered valid
     
-    # Base distance thresholds
-    distance_threshold_base: float = 80.0
-    association_threshold_base: float = 200.0
+    # ========================================
+    # ASSOCIATION THRESHOLDS (base values at reference resolution)
+    # ========================================
+    distance_threshold_base: float = 100.0  # Max distance for blob-to-track association
+    association_threshold_base: float = 150.0  # Max distance for Hungarian matching
     
-    # Motion detection base parameters (at reference resolution)
-    motion_threshold: int = 25  # Threshold for frame difference
-    min_contour_area_base: float = 100.0  # Minimum contour area in pixels
-    aspect_ratio_min: float = 0.3  # Minimum aspect ratio for detections
-    aspect_ratio_max: float = 3.0  # Maximum aspect ratio for detections
+    # ========================================
+    # BACKGROUND SUBTRACTOR PARAMETERS (MOG2)
+    # ========================================
+    bg_history: int = 500  # Number of frames to build background model
+    bg_var_threshold: float = 50.0  # Threshold for pixel classification (lower = more sensitive)
+    bg_detect_shadows: bool = True  # Whether to detect and mark shadows
+    bg_learning_rate: float = -1.0  # Learning rate (-1 = automatic, 0 = no learning, 0.01 = slow)
     
-    # Species tracking
-    enable_species_tracking: bool = False
-    label_map: Dict[int, str] = field(default_factory=lambda: {0: 'osmia_cornifrons'})
-
-    tracking_classes: List[int] = field(default_factory=lambda: [0])  # Classes to track (e.g., bees and nest tubes)
-
-    confidence_threshold: float = 0.5  # Confidence threshold for detections
+    # ========================================
+    # BACKGROUND INITIALIZATION
+    # ========================================
+    bg_init_max_frames: int = 200  # Max frames to scan for clean frames
+    bg_init_target_frames: int = 50  # Target number of bee-free frames
+    bg_init_learning_rate: float = 0.1  # Learning rate during initialization
+    bg_init_enabled: bool = True  # Enable automatic background initialization
+    
+    # ========================================
+    # KALMAN FILTER PARAMETERS
+    # ========================================
+    kalman_process_noise: float = 0.03  # Process noise covariance (higher = trust measurements more)
+    kalman_measurement_noise: float = 1.0  # Measurement noise covariance
+    kalman_state_vars: int = 4  # State variables: [x, y, vx, vy]
+    kalman_measure_vars: int = 2  # Measurement variables: [x, y]
+    
+    # ========================================
+    # FOREGROUND/BACKGROUND SEGMENTATION
+    # ========================================
+    min_fg_area_base: float = 250.0  # Minimum FG area to trigger YOLO (pixels)
+    fg_area_method: str = "contours"  # Method: "contours" or "pixels"
+    min_contour_area_base: float = 250.0  # Minimum contour area for blob detection (pixels)
+    max_contour_area_base: float = 10000.0  # Maximum contour area (filter noise)
+    
+    # Blob filtering
+    aspect_ratio_min: float = 0.2  # Minimum aspect ratio (width/height)
+    aspect_ratio_max: float = 5.0  # Maximum aspect ratio
+    min_blob_solidity: float = 0.3  # Minimum solidity (area/convex_hull_area)
+    
+    # ========================================
+    # LOW-RESOLUTION PROCESSING MODE
+    # ========================================
+    enable_low_res_mode: bool = True  # Enable adaptive resolution
+    low_res_scale_factor: float = 0.5  # Scale factor (0.5 = quarter pixels)
+    low_res_check_interval: int = 5  # Check every N frames in low-res
+    low_res_switch_threshold: int = 30  # Frames without activity before switching to low-res
+    
+    # ========================================
+    # YOLO DETECTION PARAMETERS
+    # ========================================
+    confidence_threshold: float = 0.3  # YOLO detection confidence
     iou_threshold: float = 0.3  # IOU threshold for NMS
     
-    def distance_threshold(self, width: int, height: int, hotel_box: Optional[HotelBoxConfig] = None) -> float:
-        """Get scaled distance threshold for tracking association.
-        
-        Args:
-            width: Current frame width
-            height: Current frame height
-            hotel_box: Hotel box configuration (optional)
-            
-        Returns:
-            Scaled distance threshold in pixels
-        """
+    # ========================================
+    # YOLO CONFIRMATION STRATEGY
+    # ========================================
+    yolo_confirmation_distance: float = 100.0  # Max distance for YOLO-to-blob matching
+    require_yolo_for_new_tracks: bool = True  # Require YOLO confirmation for new tracks
+    min_yolo_confirmations: int = 1  # Minimum YOLO confirmations for valid track
+    yolo_reconfirm_interval: int = 5  # Frames before requiring YOLO reconfirmation
+    
+    # ========================================
+    # SPECIES TRACKING
+    # ========================================
+    enable_species_tracking: bool = False # change to enable_label_tracking
+    label_map: Dict[int, str] = field(default_factory=lambda: {
+        0: 'osmia_cornifrons',
+    })
+    tracking_classes: List[int] = field(default_factory=lambda: [0])  # Classes to track
+    
+    # ========================================
+    # MOTION DETECTION (legacy, for compatibility)
+    # ========================================
+    motion_threshold: int = 25  # Threshold for frame difference
+
+
+    # In TrackingConfig class:
+    max_association_distance: int = 200  # Max pixels a bee can move between frames
+    max_bee_velocity: int = 50           # Max pixels/frame a bee typically moves
+    max_bee_acceleration: int = 30       # Max speed change between frames
+    
+    # ========================================
+    # SCALING METHODS
+    # ========================================
+    
+    def distance_threshold(self, width: int, height: int, hotel_box=None) -> float:
+        """Get scaled distance threshold for tracking association."""
         x_scale = width / self.reference_width
         if hotel_box is not None:
             x_scale *= hotel_box.get_scale_factor()
         return self.distance_threshold_base * x_scale
     
-    def association_threshold(self, width: int, height: int, hotel_box: Optional[HotelBoxConfig] = None) -> float:
-        """Get scaled association threshold for track matching.
-        
-        Args:
-            width: Current frame width
-            height: Current frame height
-            hotel_box: Hotel box configuration (optional)
-            
-        Returns:
-            Scaled association threshold in pixels
-        """
+    def association_threshold(self, width: int, height: int, hotel_box=None) -> float:
+        """Get scaled association threshold for Hungarian matching."""
         x_scale = width / self.reference_width
         if hotel_box is not None:
             x_scale *= hotel_box.get_scale_factor()
         return self.association_threshold_base * x_scale
     
-    def min_contour_area(self, width: int, height: int, hotel_box: Optional[HotelBoxConfig] = None) -> float:
-        """Get scaled minimum contour area for motion detection.
-        
-        Args:
-            width: Current frame width
-            height: Current frame height
-            hotel_box: Hotel box configuration (optional)
-            
-        Returns:
-            Scaled minimum contour area in square pixels
-        """
-        # Area scales with both x and y dimensions
+    def min_contour_area(self, width: int, height: int, hotel_box=None) -> float:
+        """Get scaled minimum contour area for blob detection."""
         x_scale = width / self.reference_width
         y_scale = height / self.reference_height
         
@@ -555,9 +804,307 @@ class TrackingConfig:
             x_scale *= distance_scale
             y_scale *= distance_scale
         
-        # Area scales quadratically
         area_scale = x_scale * y_scale
         return self.min_contour_area_base * area_scale
+    
+    def max_contour_area(self, width: int, height: int, hotel_box=None) -> float:
+        """Get scaled maximum contour area for blob filtering."""
+        x_scale = width / self.reference_width
+        y_scale = height / self.reference_height
+        
+        if hotel_box is not None:
+            distance_scale = hotel_box.get_scale_factor()
+            x_scale *= distance_scale
+            y_scale *= distance_scale
+        
+        area_scale = x_scale * y_scale
+        return self.max_contour_area_base * area_scale
+    
+    def min_fg_area(self, width: int, height: int, hotel_box=None) -> float:
+        """Get scaled minimum foreground area to trigger YOLO."""
+        x_scale = width / self.reference_width
+        y_scale = height / self.reference_height
+        
+        if hotel_box is not None:
+            distance_scale = hotel_box.get_scale_factor()
+            x_scale *= distance_scale
+            y_scale *= distance_scale
+        
+        area_scale = x_scale * y_scale
+        return self.min_fg_area_base * area_scale
+    
+    def yolo_match_distance(self, width: int, height: int, hotel_box=None) -> float:
+        """Get scaled distance threshold for YOLO-to-blob matching."""
+        x_scale = width / self.reference_width
+        if hotel_box is not None:
+            x_scale *= hotel_box.get_scale_factor()
+        return self.yolo_confirmation_distance * x_scale
+    
+    # ========================================
+    # PARAMETER VALIDATION METHODS
+    # ========================================
+    
+    def validate_blob(
+        self,
+        contour: 'np.ndarray',
+        width: int,
+        height: int,
+        hotel_box=None
+    ) -> Tuple[bool, str]:
+        """Validate if a blob/contour should be tracked.
+        
+        Args:
+            contour: OpenCV contour
+            width: Frame width
+            height: Frame height
+            hotel_box: Hotel box config (optional)
+            
+        Returns:
+            Tuple of (is_valid, reason)
+        """
+        import cv2
+        import numpy as np
+        
+        # Check area
+        area = cv2.contourArea(contour)
+        min_area = self.min_contour_area(width, height, hotel_box)
+        max_area = self.max_contour_area(width, height, hotel_box)
+        
+        if area < min_area:
+            return False, "area_too_small"
+        if area > max_area:
+            return False, "area_too_large"
+        
+        # Check aspect ratio
+        x, y, w, h = cv2.boundingRect(contour)
+        if h == 0:
+            return False, "invalid_height"
+        
+        aspect_ratio = w / h
+        if aspect_ratio < self.aspect_ratio_min or aspect_ratio > self.aspect_ratio_max:
+            return False, "invalid_aspect_ratio"
+        
+        # Check solidity (area / convex hull area)
+        hull = cv2.convexHull(contour)
+        hull_area = cv2.contourArea(hull)
+        if hull_area == 0:
+            return False, "invalid_hull"
+        
+        solidity = area / hull_area
+        if solidity < self.min_blob_solidity:
+            return False, "low_solidity"
+        
+        return True, "valid"
+    
+    def get_bg_subtractor_params(self) -> Dict:
+        """Get parameters for cv2.createBackgroundSubtractorMOG2.
+        
+        Returns:
+            Dictionary of parameters for MOG2 initialization
+        """
+        return {
+            'history': self.bg_history,
+            'varThreshold': self.bg_var_threshold,
+            'detectShadows': self.bg_detect_shadows
+        }
+    
+    def get_kalman_params(self) -> Dict:
+        """Get parameters for Kalman filter initialization.
+        
+        Returns:
+            Dictionary of Kalman filter parameters
+        """
+        return {
+            'state_vars': self.kalman_state_vars,
+            'measure_vars': self.kalman_measure_vars,
+            'process_noise': self.kalman_process_noise,
+            'measurement_noise': self.kalman_measurement_noise
+        }
+    
+    def get_bg_init_params(self) -> Dict:
+        """Get parameters for background initialization.
+        
+        Returns:
+            Dictionary of background initialization parameters
+        """
+        return {
+            'max_frames': self.bg_init_max_frames,
+            'target_clean_frames': self.bg_init_target_frames,
+            'learning_rate': self.bg_init_learning_rate,
+            'enabled': self.bg_init_enabled
+        }
+    
+    # ========================================
+    # CONFIGURATION PRESETS
+    # ========================================
+    
+    @classmethod
+    def default(cls) -> 'TrackingConfig':
+        """Get default configuration for standard bee monitoring."""
+        return cls()
+    
+    @classmethod
+    def high_activity(cls) -> 'TrackingConfig':
+        """Configuration optimized for high bee activity videos.
+        
+        - Lower FG thresholds to catch all activity
+        - More frequent YOLO confirmations
+        - Shorter track timeout
+        """
+        config = cls()
+        config.min_fg_area_base = 100.0  # More sensitive
+        config.yolo_reconfirm_interval = 30  # More frequent confirmation
+        config.max_age = 20  # Shorter timeout
+        config.bg_init_target_frames = 30  # Fewer clean frames needed
+        config.low_res_switch_threshold = 20  # Switch faster
+        return config
+    
+    @classmethod
+    def low_activity(cls) -> 'TrackingConfig':
+        """Configuration optimized for sparse bee activity.
+        
+        - Higher FG thresholds to reduce noise
+        - Less frequent YOLO confirmations
+        - Longer track timeout
+        """
+        config = cls()
+        config.min_fg_area_base = 250.0  # Less sensitive
+        config.yolo_reconfirm_interval = 100  # Less frequent confirmation
+        config.max_age = 50  # Longer timeout
+        config.bg_init_target_frames = 75  # More clean frames
+        config.low_res_switch_threshold = 50  # Stay in high-res longer
+        return config
+    
+    @classmethod
+    def high_accuracy(cls) -> 'TrackingConfig':
+        """Configuration optimized for maximum accuracy.
+        
+        - Frequent YOLO confirmations
+        - Strict blob validation
+        - Conservative thresholds
+        """
+        config = cls()
+        config.yolo_reconfirm_interval = 20  # Very frequent confirmation
+        config.min_yolo_confirmations = 2  # Require multiple confirmations
+        config.min_blob_solidity = 0.5  # Stricter blob filtering
+        config.confidence_threshold = 0.6  # Higher YOLO confidence
+        config.min_track_length = 10  # Longer minimum track
+        return config
+    
+    @classmethod
+    def high_speed(cls) -> 'TrackingConfig':
+        """Configuration optimized for processing speed.
+        
+        - Minimize YOLO calls
+        - Aggressive low-res mode
+        - Relaxed blob validation
+        """
+        config = cls()
+        config.yolo_reconfirm_interval = 200  # Very infrequent confirmation
+        config.min_yolo_confirmations = 1  # Single confirmation OK
+        config.enable_low_res_mode = True  # Always use low-res when possible
+        config.low_res_scale_factor = 0.4  # More aggressive downscaling
+        config.low_res_check_interval = 10  # Check less frequently
+        config.min_blob_solidity = 0.2  # Relaxed filtering
+        return config
+    
+    @classmethod
+    def custom(
+        cls,
+        activity_level: str = "medium",
+        accuracy: str = "balanced",
+        speed: str = "balanced"
+    ) -> 'TrackingConfig':
+        """Create custom configuration based on use case parameters.
+        
+        Args:
+            activity_level: "low", "medium", or "high"
+            accuracy: "relaxed", "balanced", or "strict"
+            speed: "slow", "balanced", or "fast"
+            
+        Returns:
+            Custom TrackingConfig
+        """
+        config = cls()
+        
+        # Adjust based on activity level
+        if activity_level == "high":
+            config.min_fg_area_base = 100.0
+            config.max_age = 20
+            config.bg_init_target_frames = 30
+        elif activity_level == "low":
+            config.min_fg_area_base = 250.0
+            config.max_age = 50
+            config.bg_init_target_frames = 75
+        
+        # Adjust based on accuracy needs
+        if accuracy == "strict":
+            config.yolo_reconfirm_interval = 20
+            config.min_yolo_confirmations = 2
+            config.confidence_threshold = 0.6
+        elif accuracy == "relaxed":
+            config.yolo_reconfirm_interval = 100
+            config.min_yolo_confirmations = 1
+            config.confidence_threshold = 0.4
+        
+        # Adjust based on speed needs
+        if speed == "fast":
+            config.enable_low_res_mode = True
+            config.low_res_scale_factor = 0.4
+            config.yolo_reconfirm_interval = 200
+        elif speed == "slow":
+            config.enable_low_res_mode = False
+            config.yolo_reconfirm_interval = 10
+        
+        return config
+    
+    def to_dict(self) -> Dict:
+        """Export configuration as dictionary.
+        
+        Returns:
+            Dictionary of all configuration parameters
+        """
+        from dataclasses import asdict
+        return asdict(self)
+    
+    def __repr__(self) -> str:
+        """String representation of configuration."""
+        return (
+            f"TrackingConfig(\n"
+            f"  max_age={self.max_age},\n"
+            f"  bg_history={self.bg_history},\n"
+            f"  min_fg_area_base={self.min_fg_area_base},\n"
+            f"  enable_low_res_mode={self.enable_low_res_mode},\n"
+            f"  yolo_reconfirm_interval={self.yolo_reconfirm_interval},\n"
+            f"  tracking_classes={self.tracking_classes}\n"
+            f")"
+        )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 @dataclass
@@ -571,7 +1118,7 @@ class ProcessingConfig:
     # Trajectory parameters
     min_trajectory_length: int = 5
     
-    # Window sizes (frame-based, don't scale)
+    # Window sizes (frame-based, don't scale) # these are temporal windows i.e., number of frames
     entry_window_size: int = 6
     exit_window_size: int = 3
     
@@ -948,3 +1495,17 @@ def get_config_for_scenario(scenario: str, **kwargs) -> Config:
     
     else:
         raise ValueError(f"Unknown scenario: {scenario}")
+
+
+
+
+
+
+
+
+
+
+
+
+
+

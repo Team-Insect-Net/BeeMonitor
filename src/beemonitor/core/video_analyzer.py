@@ -52,7 +52,8 @@ class AnalysisResults:
         tracks: List, # trajectories
         nests: Dict,
         video_path: str,
-        motion_data: Optional[pd.DataFrame] = None
+        motion_data: Optional[pd.DataFrame] = None, 
+        config: Optional[Config] = None
     ):
         """Initialize analysis results.
         
@@ -69,6 +70,7 @@ class AnalysisResults:
         self.nests = nests
         self.video_path = video_path
         self.motion_data = motion_data
+        self.config = config
     
     def to_csv(self, output_folder: str = "output", columns: Optional[List[str]] = None) -> None:
         """Export events to CSV file.
@@ -105,8 +107,7 @@ class AnalysisResults:
         from beemonitor.output.video_synthesizer import VideoSynthesizer
         from beemonitor.core.config import Config
         
-        config = Config.default()
-        synthesizer = VideoSynthesizer(config)
+        synthesizer = VideoSynthesizer(self.config) # <---- Make sure to use the already created config
         
         output_path = synthesizer.synthesize(
             self.video_path,
@@ -260,6 +261,89 @@ class BeeMonitor:
             config=config
         )
     
+    def visualize_motion(self, motion_data: pd.DataFrame) -> None:
+        """Visualize motion tracking data for debugging.
+        
+        Args:
+            motion_data: DataFrame with motion tracking results
+        """
+
+                # Simple Test to Isolate Event Detection Issue
+
+        res_width = self.res_width
+        res_height = self.res_height
+        config = self.config
+
+        events = motion_data.get('events', None)
+
+        print("Testing motion tracking output...")
+
+        # Test 1: Check if motion_data is empty
+        if len(motion_data) == 0:
+            print("❌ PROBLEM: motion_data is EMPTY - no tracks detected!")
+            print("   Check:")
+            print("   - Is there activity in the video?")
+            print("   - Are blob filters too strict?")
+            print("   - Check visualization video for tracks")
+            exit()
+
+        print(f"✓ Motion data has {len(motion_data)} periods")
+
+        # Test 2: Check if tracks exist
+        first_period = motion_data.iloc[0]
+        num_tracks = len(first_period['tracks'])
+        print(f"✓ First period has {num_tracks} tracks")
+
+        if num_tracks == 0:
+            print("❌ PROBLEM: Tracks list is EMPTY!")
+            exit()
+
+        # Test 3: Check track coordinates
+        first_track = first_period['tracks'][0]
+        track_id, centroids, bboxes, frame_nums = first_track
+
+        print(f"\n✓ First track:")
+        print(f"  - ID: {track_id}")
+        print(f"  - Length: {len(centroids)} positions")
+        print(f"  - First centroid: {centroids[0]}")
+        print(f"  - Frame range: {frame_nums[0]} - {frame_nums[-1]}")
+
+        # Test 4: Check coordinate system
+        x, y = centroids[0]
+        print(f"\n✓ Coordinate check:")
+        print(f"  - Frame size: {res_width}x{res_height}")
+        print(f"  - Track at: ({x:.1f}, {y:.1f})")
+
+        if config.hotel_box:
+            hx1, hy1, hx2, hy2 = config.hotel_box.hotel_box_cords
+            print(f"  - Hotel box: ({hx1:.0f}, {hy1:.0f}) to ({hx2:.0f}, {hy2:.0f})")
+            
+            # Check if track is near hotel
+            in_hotel = hx1 <= x <= hx2 and hy1 <= y <= hy2
+            print(f"  - Track in hotel: {in_hotel}")
+            
+            if not in_hotel:
+                print(f"\n❌ PROBLEM: Track is OUTSIDE hotel box!")
+                print(f"   This will prevent event detection!")
+
+        # Test 5: Check if event processor was called
+        print(f"\n✓ Event data:")
+        if 'events' not in globals():
+            print("❌ PROBLEM: 'events' variable doesn't exist!")
+            print("   Was event processor called?")
+        elif events is None:
+            print("❌ PROBLEM: events is None!")
+        elif len(events) == 0:
+            print("❌ PROBLEM: Events DataFrame is EMPTY!")
+            print("   Tracks exist but no events detected.")
+            print("   Possible causes:")
+            print("   - Tracks not near nests")
+            print("   - Trajectory too short")
+            print("   - Event detection parameters too strict")
+        else:
+            print(f"✓ Found {len(events)} events!")
+            print(events.head())
+    
     def analyze_video(
         self,
         video_path: str,
@@ -327,7 +411,10 @@ class BeeMonitor:
             output_folder,
             visualize=visualize
         )
-        
+
+        # visualize
+        #self.visualize_motion(motion_data)
+
         # Validate motion_data
         if motion_data is None:
             logger.warning("No motion tracking data returned, skipping video analysis")
@@ -349,7 +436,8 @@ class BeeMonitor:
             tracks=motion_data.get('tracks', []) if isinstance(motion_data, dict) else motion_data['tracks'].tolist(),
             nests=nests,
             video_path=video_path,
-            motion_data=motion_data
+            motion_data=motion_data, 
+            config=self.config
         )
 
         if visualize: # save synthesized video and synthesized csv only if visualize is true
@@ -607,7 +695,7 @@ class BeeMonitor:
             DataFrame with tracking results
         """
         # Import here to avoid circular imports
-        from beemonitor.detection.motion_tracking import MotionTracking as MotionDetector
+        from beemonitor.detection.motion_tracking import MotionDetector
         
         detector = MotionDetector(
             model=self.tracking_model,

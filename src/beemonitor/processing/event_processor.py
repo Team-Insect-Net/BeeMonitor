@@ -99,7 +99,7 @@ class EventProcessor:
             label_map = self.config.tracking.label_map
         
         # Extract all movements from tracking data
-        movements = []
+        movements = [] # these are trajectories
         for period in motion_data.tracks:
             for track in period:
                 movements.append(track)
