@@ -279,7 +279,7 @@ class NestDetector:
         
         return result
     
-    def get_nest_detections(
+    def get_nests_and_hotel_detections(
         self,
         video_path: str,
     ) -> Optional[Dict]:
@@ -289,7 +289,8 @@ class NestDetector:
         with quality checks and retries if needed.
         
         Process:
-        1. Detects nests in the video, starting from the first frame
+        0. Updates config.video.res* values with video resolution
+        1. Detects nests and hotel in the video, starting from the first frame
         2. Processes the detections to identify individual nest holes and assign IDs
         3. If the processed nests meet quality criteria, returns the result
         4. If quality check fails, runs detection again on subsequent frames
@@ -302,14 +303,20 @@ class NestDetector:
             Dictionary with nest information if successful, None otherwise
             
         Example:
-            >>> nests = detector.get_nest_detection("video.mp4", 720, 1280)
+            >>> nests = detector.get_nest_detection("video.mp4")
             >>> if nests is not None:
             >>>     print(f"Successfully detected {len(nests['nests'])} nests")
         """
         max_attempts = self.config.nest.max_detection_attempts
 
-        res_height = self.config.video.res_height
-        res_width = self.config.video.res_width
+        cap = cv2.VideoCapture(video_path)
+        res_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        res_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        fps = int(cap.get(cv2.CAP_PROP_FPS))
+
+        self.config.video.res_height = res_height
+        self.config.video.res_width = res_width
+        self.config.video.fps = fps
 
         min_detections = self.config.nest.min_detections 
         

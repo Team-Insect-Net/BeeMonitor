@@ -27,7 +27,7 @@ from functools import partial
 
 from ultralytics import YOLO
 from beemonitor.core.config import Config
-from beemonitor.detection.motion_tracking import MotionDetector
+from beemonitor.detection.motion_tracking import MotionTracking
 from beemonitor.detection.nest_detector import NestDetector
 
 logger = logging.getLogger(__name__)

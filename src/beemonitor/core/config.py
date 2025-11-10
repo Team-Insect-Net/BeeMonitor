@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 @dataclass
 class VideoConfig:
     """Video processing configuration with auto-detection support."""
-    res_width: int = 1920
-    res_height: int = 1080
+    res_width: int = 1280
+    res_height: int = 720
     fps: int = 30
     auto_detect_from_video: bool = True  # Automatically detect FPS and resolution from video
     annotation_mode: bool = True # Use annotation mode for visualization scaling
@@ -199,79 +199,42 @@ class NestConfig:
     nest_count_tolerance: int = 3
     
     # Base pixel measurements (at reference resolution and distance)
-    # Base nest size expressed as pixels at the reference resolution.
-    # The existing nest_width() / nest_height() methods multiply these by
-    # the runtime resolution scale (width / reference_width, height / reference_height)
-    # and by any hotel distance factor, so these values represent the reference-size.
-    # nest_width_base: float = 38.0
-    # nest_height_base: float = 28.0
-
-    nest_width_base: float = 24 #38.0 #  need to update these dynamically based on actual nest box detections
-    nest_height_base: float = 14 #28.0
-
-    # # Convenience ratio fields (derived from the reference) in case callers
-    # # prefer working with proportions. These are not part of __init__.
-    # nest_width_ratio: float = field(init=False, default=38.0 / 1920)
-    # nest_height_ratio: float = field(init=False, default=28.0 / 1080)
-
-    # @property
-    # def nest_width_at_reference(self) -> float:
-    #     """Pixel width of a nest at the configured reference resolution."""
-    #     return self.nest_width_base
-
-    # @property
-    # def nest_height_at_reference(self) -> float:
-    #     """Pixel height of a nest at the configured reference resolution."""
-    #     return self.nest_height_base
+    nest_width_base: float = 24
+    nest_height_base: float = 14
     padding_x_base: float = 5.0
     padding_y_base: float = 7.0
     hotel_padding_x_base: float = 100.0
     hotel_padding_y_base: float = 50.0
 
     # Quality check tolerances (base values)
-    spacing_tolerance_base: float = 25.0  # Tolerance for spacing between nests
-    x_position_tolerance_base: float = 20.0  # Tolerance for X position
-    y_position_tolerance_base: float = 15.0  # Tolerance for Y position
+    spacing_tolerance_base: float = 25.0
+    x_position_tolerance_base: float = 20.0
+    y_position_tolerance_base: float = 15.0
 
-    
     # Dynamic padding options
-    use_dynamic_padding: bool = True  # Calculate padding from actual nest spacing
-    dynamic_padding_ratio: float = 0.15  # Padding as fraction of spacing (15% of gap)
-    min_padding_x: float = 3.0  # Minimum X padding even with dynamic calculation
-    min_padding_y: float = 3.0  # Minimum Y padding even with dynamic calculation
+    use_dynamic_padding: bool = True
+    dynamic_padding_ratio: float = 0.15
+    min_padding_x: float = 3.0
+    min_padding_y: float = 3.0
     
     # Quality check tolerances (base values) - RENAMED FOR CLARITY
-    # These control how strict the quality checks are for nest detection
-    nest_spacing_tolerance_base: float = 15.0  # Tolerance for spacing between nests in same row
-    row_alignment_tolerance_base: float = 70.0  # Tolerance for vertical alignment within a row (Y-axis)
-    column_alignment_tolerance_base: float = 12.0  # Tolerance for horizontal alignment within a column (X-axis)
-    
-
+    nest_spacing_tolerance_base: float = 15.0
+    row_alignment_tolerance_base: float = 70.0
+    column_alignment_tolerance_base: float = 12.0
     
     # Clustering thresholds (base values)
-    row_threshold_base: float = 30.0  # Y-axis distance for row clustering
-    col_threshold_base: float = 50.0  # X-axis distance for column clustering
+    row_threshold_base: float = 30.0
+    col_threshold_base: float = 50.0
 
-    min_row_size: int = 6  # Minimum nests to form a valid row
-    min_col_size: int = 10  # Minimum nests to form a valid column
+    min_row_size: int = 6
+    min_col_size: int = 10
     
     # Scaling methods for different parameters
     def get_scale_factor(self, width: int, height: int, hotel_box: Optional[HotelBoxConfig] = None) -> Tuple[float, float]:
-        """Calculate scale factors based on resolution and hotel position.
-        
-        Args:
-            width: Current frame width
-            height: Current frame height
-            hotel_box: Hotel box configuration (optional)
-            
-        Returns:
-            Tuple of (x_scale, y_scale)
-        """
-        # Basic resolution scaling
+        """Calculate scale factors based on resolution and hotel position."""
         x_scale = width / self.reference_width
         y_scale = height / self.reference_height
         
-        # Apply distance/hotel scaling if available
         if hotel_box is not None:
             distance_scale = hotel_box.get_scale_factor()
             x_scale *= distance_scale
@@ -326,82 +289,27 @@ class NestConfig:
         return self.y_position_tolerance_base * y_scale * 2.5
     
     def row_threshold(self, width: int, height: int, hotel_box: Optional[HotelBoxConfig] = None) -> float:
-        """Get scaled row clustering threshold (Y-axis distance).
-        
-        Args:
-            width: Current frame width
-            height: Current frame height
-            hotel_box: Hotel box configuration (optional)
-            
-        Returns:
-            Scaled row threshold for clustering detections into rows
-        """
+        """Get scaled row clustering threshold (Y-axis distance)."""
         _, y_scale = self.get_scale_factor(width, height, hotel_box)
         return self.row_threshold_base * y_scale
     
     def col_threshold(self, width: int, height: int, hotel_box: Optional[HotelBoxConfig] = None) -> float:
-        """Get scaled column clustering threshold (X-axis distance).
-        
-        Args:
-            width: Current frame width
-            height: Current frame height
-            hotel_box: Hotel box configuration (optional)
-            
-        Returns:
-            Scaled column threshold for clustering detections into columns
-        """
+        """Get scaled column clustering threshold (X-axis distance)."""
         x_scale, _ = self.get_scale_factor(width, height, hotel_box)
         return self.col_threshold_base * x_scale
     
-    # NEW: Better-named tolerance methods for quality checks
     def nest_spacing_tolerance(self, width: int, height: int, hotel_box: Optional[HotelBoxConfig] = None) -> float:
-        """Get scaled tolerance for horizontal spacing between nests in same row.
-        
-        This controls how much variation is allowed in the distance between 
-        consecutive nests within a row during quality checks.
-        
-        Args:
-            width: Current frame width
-            height: Current frame height
-            hotel_box: Hotel box configuration (optional)
-            
-        Returns:
-            Scaled tolerance for nest spacing in pixels
-        """
+        """Get scaled tolerance for horizontal spacing between nests in same row."""
         x_scale, _ = self.get_scale_factor(width, height, hotel_box)
         return self.nest_spacing_tolerance_base * x_scale
     
     def row_alignment_tolerance(self, width: int, height: int, hotel_box: Optional[HotelBoxConfig] = None) -> float:
-        """Get scaled tolerance for vertical alignment of nests within same row.
-        
-        This controls how much vertical (Y-axis) deviation is allowed for nests
-        that should be in the same row during quality checks.
-        
-        Args:
-            width: Current frame width
-            height: Current frame height
-            hotel_box: Hotel box configuration (optional)
-            
-        Returns:
-            Scaled tolerance for row alignment in pixels
-        """
+        """Get scaled tolerance for vertical alignment of nests within same row."""
         _, y_scale = self.get_scale_factor(width, height, hotel_box)
         return self.row_alignment_tolerance_base * y_scale
     
     def column_alignment_tolerance(self, width: int, height: int, hotel_box: Optional[HotelBoxConfig] = None) -> float:
-        """Get scaled tolerance for horizontal alignment of nests within same column.
-        
-        This controls how much horizontal (X-axis) deviation is allowed for nests
-        that should be in the same column during quality checks.
-        
-        Args:
-            width: Current frame width
-            height: Current frame height
-            hotel_box: Hotel box configuration (optional)
-            
-        Returns:
-            Scaled tolerance for column alignment in pixels
-        """
+        """Get scaled tolerance for horizontal alignment of nests within same column."""
         x_scale, _ = self.get_scale_factor(width, height, hotel_box)
         return self.column_alignment_tolerance_base * x_scale
     
@@ -412,23 +320,8 @@ class NestConfig:
         height: int,
         hotel_box: Optional[HotelBoxConfig] = None
     ) -> Tuple[int, int]:
-        """Calculate dynamic padding based on actual nest spacing in detected rows.
-        
-        This method analyzes the actual spacing between nests and between rows
-        to calculate appropriate padding that prevents overlapping boxes while
-        fitting tightly around each nest.
-        
-        Args:
-            rows: List of rows, each containing nest points (x, y)
-            width: Current frame width
-            height: Current frame height
-            hotel_box: Hotel box configuration (optional)
-            
-        Returns:
-            Tuple of (pad_x, pad_y) in pixels
-        """
+        """Calculate dynamic padding based on actual nest spacing in detected rows."""
         if not self.use_dynamic_padding or not rows:
-            # Fall back to static padding
             return self.padding_x(width, height, hotel_box), self.padding_y(height, height, hotel_box)
         
         # Calculate average horizontal spacing between nests in same row
@@ -443,17 +336,14 @@ class NestConfig:
         # Calculate average vertical spacing between rows
         all_y_spacings = []
         if len(rows) > 1:
-            # Calculate average Y position for each row
             row_y_positions = []
             for row in rows:
                 if row:
                     avg_y = sum(p[1] for p in row) / len(row)
                     row_y_positions.append(avg_y)
             
-            # Sort by Y position
             row_y_positions.sort()
             
-            # Calculate spacing between consecutive rows
             for i in range(len(row_y_positions)-1):
                 spacing = row_y_positions[i+1] - row_y_positions[i]
                 all_y_spacings.append(spacing)
@@ -476,310 +366,125 @@ class NestConfig:
         return pad_x, pad_y
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# @dataclass
-# class TrackingConfig:
-#     """Tracking configuration with hotel-aware scaling."""
-    
-#     # Reference resolution (baseline for parameter tuning)
-#     reference_width: int = 1920
-#     reference_height: int = 1080
-    
-#     # Base tracking parameters (at reference resolution/distance)
-#     max_age: int = 30
-#     no_motion_frames: int = 30
-#     track_start_id: int = 0
-    
-#     # Base distance thresholds
-#     distance_threshold_base: float = 80.0
-#     association_threshold_base: float = 200.0
-    
-#     # Motion detection base parameters (at reference resolution)
-#     motion_threshold: int = 25  # Threshold for frame difference
-#     min_contour_area_base: float = 100.0  # Minimum contour area in pixels
-#     aspect_ratio_min: float = 0.3  # Minimum aspect ratio for detections
-#     aspect_ratio_max: float = 3.0  # Maximum aspect ratio for detections
-    
-#     # Species tracking
-#     enable_species_tracking: bool = False
-#     label_map: Dict[int, str] = field(default_factory=lambda: {0: 'osmia_cornifrons'})
-
-#     tracking_classes: List[int] = field(default_factory=lambda: [0])  # Classes to track (e.g., bees and nest tubes)
-
-#     confidence_threshold: float = 0.5  # Confidence threshold for detections
-#     iou_threshold: float = 0.3  # IOU threshold for NMS
-
-#     enable_low_res_mode : bool = True  # Use optimized settings for low-res videos
-#     low_res_check_interval : int = 30  # Frames between low-res checks # make it based on fps of video (every 0.5 second)
-#     low_res_scale_factor : float = 0.5  # Scale factor for low-res processing
-
-#     fg_area_method : str = "pixels"  # Method for foreground area calculation ("fixed" or "adaptive")
-#     min_fg_area : float = 500.0  # Minimum foreground area for motion detection (in pixels or percentage)
-    
-#     def distance_threshold(self, width: int, height: int, hotel_box: Optional[HotelBoxConfig] = None) -> float:
-#         """Get scaled distance threshold for tracking association.
-        
-#         Args:
-#             width: Current frame width
-#             height: Current frame height
-#             hotel_box: Hotel box configuration (optional)
-            
-#         Returns:
-#             Scaled distance threshold in pixels
-#         """
-#         x_scale = width / self.reference_width
-#         if hotel_box is not None:
-#             x_scale *= hotel_box.get_scale_factor()
-#         return self.distance_threshold_base * x_scale
-    
-#     def association_threshold(self, width: int, height: int, hotel_box: Optional[HotelBoxConfig] = None) -> float:
-#         """Get scaled association threshold for track matching.
-        
-#         Args:
-#             width: Current frame width
-#             height: Current frame height
-#             hotel_box: Hotel box configuration (optional)
-            
-#         Returns:
-#             Scaled association threshold in pixels
-#         """
-#         x_scale = width / self.reference_width
-#         if hotel_box is not None:
-#             x_scale *= hotel_box.get_scale_factor()
-#         return self.association_threshold_base * x_scale
-    
-#     def min_contour_area(self, width: int, height: int, hotel_box: Optional[HotelBoxConfig] = None) -> float:
-#         """Get scaled minimum contour area for motion detection.
-        
-#         Args:
-#             width: Current frame width
-#             height: Current frame height
-#             hotel_box: Hotel box configuration (optional)
-            
-#         Returns:
-#             Scaled minimum contour area in square pixels
-#         """
-#         # Area scales with both x and y dimensions
-#         x_scale = width / self.reference_width
-#         y_scale = height / self.reference_height
-        
-#         if hotel_box is not None:
-#             distance_scale = hotel_box.get_scale_factor()
-#             x_scale *= distance_scale
-#             y_scale *= distance_scale
-        
-#         # Area scales quadratically
-#         area_scale = x_scale * y_scale
-#         return self.min_contour_area_base * area_scale
-
-
-"""Enhanced TrackingConfig for HyDaT tracking system.
-
-This module extends the TrackingConfig with additional parameters specific to
-the HyDaT (Hybrid Detection and Tracking) approach.
-"""
-
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 @dataclass
 class TrackingConfig:
-    """Enhanced tracking configuration for HyDaT system with hotel-aware scaling.
-    
-    This configuration includes all parameters needed for:
-    - Background subtraction (MOG2)
-    - Kalman filter tracking
-    - FG/BG segmentation
-    - Low-resolution processing
-    - Track validation
-    - YOLO confirmation strategy
-    """
+    """Enhanced tracking configuration for HyDaT system with hotel-aware scaling."""
 
-    debug_mode: bool = False  # Enable debug logging
+    debug_mode: bool = False
+    viz_padding_frames: int = 15
+    track_full_frame: bool = False
+    min_blob_solidity: float = 1.75
+    max_blob_distance_from_hotel: float = 1800.0
+    max_frames_without_yolo: int = 10
+    force_yolo_on_no_blobs: bool = True
+    force_yolo_for_tracking: bool = True
 
-    viz_padding_frames: int = 15  # Visualization padding around tracks
-
-    track_full_frame = False  # Track in full frame vs hotel box (ROI)
-
-    min_blob_solidity = 0.75
-    max_blob_distance_from_hotel = 1800.0
-
-    max_frames_without_yolo: int = 10  # Periodic verification
-    force_yolo_on_no_blobs: bool = True  # YOLO when no blobs
-
-        # Enable/disable
+    # Adaptive association parameters
     adaptive_association: bool = True
-    
-    # Speed threshold for elliptical vs circular
-    stationary_speed_threshold: float = 5.0  # px/frame
-    
-    # Forward search scaling
-    max_speed_factor: float = 3.0  # Up to 4x base
-    
-    # Ellipse shape
-    lateral_search_ratio: float = 0.6   # 60% lateral
-    reverse_search_ratio: float = 0.8   # 80% reverse
-    
-    # Preference for forward matches
-    reverse_motion_penalty: float = 1.3  # 30% penalty
-    
-    # Feature matching importance
-    area_similarity_weight: float = 0.7  # 20% weight
-
+    stationary_speed_threshold: float = 5.0
+    max_speed_factor: float = 3.0
+    lateral_search_ratio: float = 0.6
+    reverse_search_ratio: float = 0.8
+    reverse_motion_penalty: float = 1.3
+    area_similarity_weight: float = 0.7
 
     # All optimized values now here
-    max_age: int = 60  # based on fps of video (should be 1 second)
-    association_threshold_base: float = 400.0  # Was 200.0
-    min_blob_aspect_ratio: float = 0.4  # NEW
-    max_blob_aspect_ratio: float = 2.5  # NEW
-    min_blob_area_pixels: float = 1500.0  # NEW # this should be based on resolution and hotel distance (We can use the detected hotel for reference of distance from camera)
-    max_blob_area_pixels: float = 10000.0  # NEW # same here and the other pixel-based parameters
-    new_track_distance_threshold: float = 50.0  # NEW
-    new_track_proximity_check: float = 100.0  # NEW
-    low_res_switch_threshold: int = 50  # NEW
-    kalman_process_noise: float = 0.15  # NEW
-    #min_confidence: float = 0.7  # NEW
-    min_track_length: int = 5  # NEW
-
+    max_age: int = 60
+    association_threshold_base: float = 100.0
+    min_blob_aspect_ratio: float = 0.4
+    max_blob_aspect_ratio: float = 2.5
     
-    # ========================================
-    # REFERENCE RESOLUTION
-    # ========================================
-    reference_width: int = 1920
-    reference_height: int = 1080
+    # ⭐ CRITICAL FIX: Area filter base values (BEFORE auto-scaling)
+    # These get scaled by (scale_factor)² - area scales quadratically
+    # 
+    # Example scaling for CLOSE camera (scale_factor = 4.5):
+    #   min: 10 × (4.5)² = 202 px² ✓ Good for catching bees
+    #   max: 1500 × (4.5)² = 30,375 px² ✓ Filters large noise
+    #
+    # Example scaling for REFERENCE camera (scale_factor = 1.0):
+    #   min: 10 × (1.0)² = 10 px² ✓ Catches small bees
+    #   max: 1500 × (1.0)² = 1500 px² ✓ Normal upper bound
+    #
+    # Example scaling for FAR camera (scale_factor = 0.5):
+    #   min: 10 × (0.5)² = 2.5 px² ✓ Very sensitive
+    #   max: 1500 × (0.5)² = 375 px² ✓ Tighter upper bound
+    #
+    min_blob_area_pixels: float = 500  # ⭐ LOWERED from 20.0 to fix rejection issue
+    max_blob_area_pixels: float = 1500.0  # ⭐ LOWERED from 2000.0
     
-    # ========================================
-    # TRACK MANAGEMENT
-    # ========================================
-    max_age: int = 10  # Max frames without detection before track deletion
-    no_motion_frames: int = 15  # Frames without motion to consider inactive
-    track_start_id: int = 0  # Starting track ID
-    min_track_length: int = 5  # Minimum track length to be considered valid
+    new_track_distance_threshold: float = 100.0
+    new_track_proximity_check: float = 100.0
+    low_res_switch_threshold: int = 50
+    kalman_process_noise: float = 0.15
+    min_track_length: int = 5
     
-    # ========================================
-    # ASSOCIATION THRESHOLDS (base values at reference resolution)
-    # ========================================
-    distance_threshold_base: float = 100.0  # Max distance for blob-to-track association
-    association_threshold_base: float = 150.0  # Max distance for Hungarian matching
+    # Reference resolution
+    reference_width: int = 1280
+    reference_height: int = 720
     
-    # ========================================
-    # BACKGROUND SUBTRACTOR PARAMETERS (MOG2)
-    # ========================================
-    bg_history: int = 500  # Number of frames to build background model
-    bg_var_threshold: float = 50.0  # Threshold for pixel classification (lower = more sensitive)
-    bg_detect_shadows: bool = True  # Whether to detect and mark shadows
-    bg_learning_rate: float = -1.0  # Learning rate (-1 = automatic, 0 = no learning, 0.01 = slow)
+    # Track management
+    no_motion_frames: int = 15
+    track_start_id: int = 0
     
-    # ========================================
-    # BACKGROUND INITIALIZATION
-    # ========================================
-    bg_init_max_frames: int = 200  # Max frames to scan for clean frames
-    bg_init_target_frames: int = 50  # Target number of bee-free frames
-    bg_init_learning_rate: float = 0.1  # Learning rate during initialization
-    bg_init_enabled: bool = True  # Enable automatic background initialization
+    # Association thresholds (base values at reference resolution)
+    distance_threshold_base: float = 100.0
     
-    # ========================================
-    # KALMAN FILTER PARAMETERS
-    # ========================================
-    kalman_process_noise: float = 0.03  # Process noise covariance (higher = trust measurements more)
-    kalman_measurement_noise: float = 1.0  # Measurement noise covariance
-    kalman_state_vars: int = 4  # State variables: [x, y, vx, vy]
-    kalman_measure_vars: int = 2  # Measurement variables: [x, y]
+    # Background subtractor parameters (MOG2)
+    bg_history: int = 500
+    bg_var_threshold: float = 50.0
+    bg_detect_shadows: bool = True
+    bg_learning_rate: float = -1.0
     
-    # ========================================
-    # FOREGROUND/BACKGROUND SEGMENTATION
-    # ========================================
-    min_fg_area_base: float = 250.0  # Minimum FG area to trigger YOLO (pixels)
-    fg_area_method: str = "contours"  # Method: "contours" or "pixels"
-    min_contour_area_base: float = 250.0  # Minimum contour area for blob detection (pixels)
-    max_contour_area_base: float = 10000.0  # Maximum contour area (filter noise)
+    # Background initialization
+    bg_init_max_frames: int = 200
+    bg_init_target_frames: int = 50
+    bg_init_learning_rate: float = 0.1
+    bg_init_enabled: bool = True
+    
+    # Kalman filter parameters
+    kalman_measurement_noise: float = 1.0
+    kalman_state_vars: int = 4
+    kalman_measure_vars: int = 2
+    
+    # Foreground/background segmentation
+    min_fg_area_base: float = 250.0
+    fg_area_method: str = "contours"
+    min_contour_area_base: float = 250.0
+    max_contour_area_base: float = 10000.0
     
     # Blob filtering
-    aspect_ratio_min: float = 0.2  # Minimum aspect ratio (width/height)
-    aspect_ratio_max: float = 5.0  # Maximum aspect ratio
-    min_blob_solidity: float = 0.3  # Minimum solidity (area/convex_hull_area)
+    aspect_ratio_min: float = 0.2
+    aspect_ratio_max: float = 5.0
     
-    # ========================================
-    # LOW-RESOLUTION PROCESSING MODE
-    # ========================================
-    enable_low_res_mode: bool = True  # Enable adaptive resolution
-    low_res_scale_factor: float = 0.5  # Scale factor (0.5 = quarter pixels)
-    low_res_check_interval: int = 5  # Check every N frames in low-res
-    low_res_switch_threshold: int = 30  # Frames without activity before switching to low-res
+    # Low-resolution processing mode
+    enable_low_res_mode: bool = True
+    low_res_scale_factor: float = 0.5
+    low_res_check_interval: int = 5
     
-    # ========================================
-    # YOLO DETECTION PARAMETERS
-    # ========================================
-    confidence_threshold: float = 0.3  # YOLO detection confidence
-    iou_threshold: float = 0.3  # IOU threshold for NMS
+    # YOLO detection parameters
+    confidence_threshold: float = 0.3
+    iou_threshold: float = 0.4
     
-    # ========================================
-    # YOLO CONFIRMATION STRATEGY
-    # ========================================
-    yolo_confirmation_distance: float = 100.0  # Max distance for YOLO-to-blob matching
-    require_yolo_for_new_tracks: bool = True  # Require YOLO confirmation for new tracks
-    min_yolo_confirmations: int = 1  # Minimum YOLO confirmations for valid track
-    yolo_reconfirm_interval: int = 5  # Frames before requiring YOLO reconfirmation
+    # YOLO confirmation strategy
+    yolo_confirmation_distance: float = 100.0
+    require_yolo_for_new_tracks: bool = True
+    min_yolo_confirmations: int = 1
+    yolo_reconfirm_interval: int = 5
     
-    # ========================================
-    # SPECIES TRACKING
-    # ========================================
-    enable_species_tracking: bool = False # change to enable_label_tracking
-    label_map: Dict[int, str] = field(default_factory=lambda: {
-        0: 'osmia_cornifrons',
-    })
-    tracking_classes: List[int] = field(default_factory=lambda: [0])  # Classes to track
+    # Species tracking
+    enable_species_tracking: bool = False
+    label_map: Dict[int, str] = field(default_factory=lambda: {0: 'osmia_cornifrons', 1: 'bee'})
+    tracking_classes: List[int] = field(default_factory=lambda: [0])
     
-    # ========================================
-    # MOTION DETECTION (legacy, for compatibility)
-    # ========================================
-    motion_threshold: int = 25  # Threshold for frame difference
+    # Motion detection (legacy)
+    motion_threshold: int = 25
 
-
-    # In TrackingConfig class:
-    max_association_distance: int = 200  # Max pixels a bee can move between frames
-    max_bee_velocity: int = 50           # Max pixels/frame a bee typically moves
-    max_bee_acceleration: int = 30       # Max speed change between frames
+    # Safety limits for association
+    max_association_distance: int = 100
+    max_bee_velocity: int = 50
+    max_bee_acceleration: int = 30
     
-    # ========================================
-    # SCALING METHODS
-    # ========================================
-    
+    # Scaling methods
     def distance_threshold(self, width: int, height: int, hotel_box=None) -> float:
         """Get scaled distance threshold for tracking association."""
         x_scale = width / self.reference_width
@@ -840,32 +545,10 @@ class TrackingConfig:
             x_scale *= hotel_box.get_scale_factor()
         return self.yolo_confirmation_distance * x_scale
     
-    # ========================================
-    # PARAMETER VALIDATION METHODS
-    # ========================================
-    
-    def validate_blob(
-        self,
-        contour: 'np.ndarray',
-        width: int,
-        height: int,
-        hotel_box=None
-    ) -> Tuple[bool, str]:
-        """Validate if a blob/contour should be tracked.
-        
-        Args:
-            contour: OpenCV contour
-            width: Frame width
-            height: Frame height
-            hotel_box: Hotel box config (optional)
-            
-        Returns:
-            Tuple of (is_valid, reason)
-        """
+    def validate_blob(self, contour: 'np.ndarray', width: int, height: int, hotel_box=None) -> Tuple[bool, str]:
+        """Validate if a blob/contour should be tracked."""
         import cv2
-        import numpy as np
         
-        # Check area
         area = cv2.contourArea(contour)
         min_area = self.min_contour_area(width, height, hotel_box)
         max_area = self.max_contour_area(width, height, hotel_box)
@@ -875,7 +558,6 @@ class TrackingConfig:
         if area > max_area:
             return False, "area_too_large"
         
-        # Check aspect ratio
         x, y, w, h = cv2.boundingRect(contour)
         if h == 0:
             return False, "invalid_height"
@@ -884,7 +566,6 @@ class TrackingConfig:
         if aspect_ratio < self.aspect_ratio_min or aspect_ratio > self.aspect_ratio_max:
             return False, "invalid_aspect_ratio"
         
-        # Check solidity (area / convex hull area)
         hull = cv2.convexHull(contour)
         hull_area = cv2.contourArea(hull)
         if hull_area == 0:
@@ -897,11 +578,7 @@ class TrackingConfig:
         return True, "valid"
     
     def get_bg_subtractor_params(self) -> Dict:
-        """Get parameters for cv2.createBackgroundSubtractorMOG2.
-        
-        Returns:
-            Dictionary of parameters for MOG2 initialization
-        """
+        """Get parameters for cv2.createBackgroundSubtractorMOG2."""
         return {
             'history': self.bg_history,
             'varThreshold': self.bg_var_threshold,
@@ -909,11 +586,7 @@ class TrackingConfig:
         }
     
     def get_kalman_params(self) -> Dict:
-        """Get parameters for Kalman filter initialization.
-        
-        Returns:
-            Dictionary of Kalman filter parameters
-        """
+        """Get parameters for Kalman filter initialization."""
         return {
             'state_vars': self.kalman_state_vars,
             'measure_vars': self.kalman_measure_vars,
@@ -922,21 +595,13 @@ class TrackingConfig:
         }
     
     def get_bg_init_params(self) -> Dict:
-        """Get parameters for background initialization.
-        
-        Returns:
-            Dictionary of background initialization parameters
-        """
+        """Get parameters for background initialization."""
         return {
             'max_frames': self.bg_init_max_frames,
             'target_clean_frames': self.bg_init_target_frames,
             'learning_rate': self.bg_init_learning_rate,
             'enabled': self.bg_init_enabled
         }
-    
-    # ========================================
-    # CONFIGURATION PRESETS
-    # ========================================
     
     @classmethod
     def default(cls) -> 'TrackingConfig':
@@ -945,125 +610,51 @@ class TrackingConfig:
     
     @classmethod
     def high_activity(cls) -> 'TrackingConfig':
-        """Configuration optimized for high bee activity videos.
-        
-        - Lower FG thresholds to catch all activity
-        - More frequent YOLO confirmations
-        - Shorter track timeout
-        """
+        """Configuration optimized for high bee activity videos."""
         config = cls()
-        config.min_fg_area_base = 100.0  # More sensitive
-        config.yolo_reconfirm_interval = 30  # More frequent confirmation
-        config.max_age = 20  # Shorter timeout
-        config.bg_init_target_frames = 30  # Fewer clean frames needed
-        config.low_res_switch_threshold = 20  # Switch faster
+        config.min_fg_area_base = 100.0
+        config.yolo_reconfirm_interval = 30
+        config.max_age = 20
+        config.bg_init_target_frames = 30
+        config.low_res_switch_threshold = 20
         return config
     
     @classmethod
     def low_activity(cls) -> 'TrackingConfig':
-        """Configuration optimized for sparse bee activity.
-        
-        - Higher FG thresholds to reduce noise
-        - Less frequent YOLO confirmations
-        - Longer track timeout
-        """
+        """Configuration optimized for sparse bee activity."""
         config = cls()
-        config.min_fg_area_base = 250.0  # Less sensitive
-        config.yolo_reconfirm_interval = 100  # Less frequent confirmation
-        config.max_age = 50  # Longer timeout
-        config.bg_init_target_frames = 75  # More clean frames
-        config.low_res_switch_threshold = 50  # Stay in high-res longer
+        config.min_fg_area_base = 250.0
+        config.yolo_reconfirm_interval = 100
+        config.max_age = 50
+        config.bg_init_target_frames = 75
+        config.low_res_switch_threshold = 50
         return config
     
     @classmethod
     def high_accuracy(cls) -> 'TrackingConfig':
-        """Configuration optimized for maximum accuracy.
-        
-        - Frequent YOLO confirmations
-        - Strict blob validation
-        - Conservative thresholds
-        """
+        """Configuration optimized for maximum accuracy."""
         config = cls()
-        config.yolo_reconfirm_interval = 20  # Very frequent confirmation
-        config.min_yolo_confirmations = 2  # Require multiple confirmations
-        config.min_blob_solidity = 0.5  # Stricter blob filtering
-        config.confidence_threshold = 0.6  # Higher YOLO confidence
-        config.min_track_length = 10  # Longer minimum track
+        config.yolo_reconfirm_interval = 20
+        config.min_yolo_confirmations = 2
+        config.min_blob_solidity = 0.5
+        config.confidence_threshold = 0.6
+        config.min_track_length = 10
         return config
     
     @classmethod
     def high_speed(cls) -> 'TrackingConfig':
-        """Configuration optimized for processing speed.
-        
-        - Minimize YOLO calls
-        - Aggressive low-res mode
-        - Relaxed blob validation
-        """
+        """Configuration optimized for processing speed."""
         config = cls()
-        config.yolo_reconfirm_interval = 200  # Very infrequent confirmation
-        config.min_yolo_confirmations = 1  # Single confirmation OK
-        config.enable_low_res_mode = True  # Always use low-res when possible
-        config.low_res_scale_factor = 0.4  # More aggressive downscaling
-        config.low_res_check_interval = 10  # Check less frequently
-        config.min_blob_solidity = 0.2  # Relaxed filtering
-        return config
-    
-    @classmethod
-    def custom(
-        cls,
-        activity_level: str = "medium",
-        accuracy: str = "balanced",
-        speed: str = "balanced"
-    ) -> 'TrackingConfig':
-        """Create custom configuration based on use case parameters.
-        
-        Args:
-            activity_level: "low", "medium", or "high"
-            accuracy: "relaxed", "balanced", or "strict"
-            speed: "slow", "balanced", or "fast"
-            
-        Returns:
-            Custom TrackingConfig
-        """
-        config = cls()
-        
-        # Adjust based on activity level
-        if activity_level == "high":
-            config.min_fg_area_base = 100.0
-            config.max_age = 20
-            config.bg_init_target_frames = 30
-        elif activity_level == "low":
-            config.min_fg_area_base = 250.0
-            config.max_age = 50
-            config.bg_init_target_frames = 75
-        
-        # Adjust based on accuracy needs
-        if accuracy == "strict":
-            config.yolo_reconfirm_interval = 20
-            config.min_yolo_confirmations = 2
-            config.confidence_threshold = 0.6
-        elif accuracy == "relaxed":
-            config.yolo_reconfirm_interval = 100
-            config.min_yolo_confirmations = 1
-            config.confidence_threshold = 0.4
-        
-        # Adjust based on speed needs
-        if speed == "fast":
-            config.enable_low_res_mode = True
-            config.low_res_scale_factor = 0.4
-            config.yolo_reconfirm_interval = 200
-        elif speed == "slow":
-            config.enable_low_res_mode = False
-            config.yolo_reconfirm_interval = 10
-        
+        config.yolo_reconfirm_interval = 200
+        config.min_yolo_confirmations = 1
+        config.enable_low_res_mode = True
+        config.low_res_scale_factor = 0.4
+        config.low_res_check_interval = 10
+        config.min_blob_solidity = 0.2
         return config
     
     def to_dict(self) -> Dict:
-        """Export configuration as dictionary.
-        
-        Returns:
-            Dictionary of all configuration parameters
-        """
+        """Export configuration as dictionary."""
         from dataclasses import asdict
         return asdict(self)
     
@@ -1081,52 +672,19 @@ class TrackingConfig:
         )
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 @dataclass
 class ProcessingConfig:
     """Processing configuration with hotel-aware scaling."""
     
-    # Reference resolution (baseline for parameter tuning)
     reference_width: int = 1920
     reference_height: int = 1080
     
-    # Trajectory parameters
     min_trajectory_length: int = 5
-    
-    # Window sizes (frame-based, don't scale) # these are temporal windows i.e., number of frames
     entry_window_size: int = 6
     exit_window_size: int = 3
     
-    # Base padding values
     entry_padding_base: float = 10.0
     exit_padding_base: float = 20.0
-    
-    # Base speed thresholds
     start_speed_threshold_base: float = 10.0
     end_speed_threshold_base: float = 10.0
     
@@ -1166,38 +724,13 @@ class OutputConfig:
     save_visualizations: bool = False
     save_intermediate_frames: bool = False
     video_codec: str = "mp4v"
-    #video_fps: int = 30 # this should be dynamic based on input video fps
     csv_include_species: bool = True
-    csv_columns: Optional[List[str]] = None  # If None, include all columns
+    csv_columns: Optional[List[str]] = None
 
 
 @dataclass
 class Config:
-    """Main configuration with hotel box-aware parameter scaling.
-    
-    This configuration system automatically scales all pixel-based parameters
-    based on both video resolution AND hotel box position/distance.
-    
-    Attributes:
-        video: Video processing settings
-        hotel_box: Hotel box position and distance settings
-        models: Model file paths
-        nest: Nest detection parameters
-        tracking: Tracking algorithm parameters
-        processing: Event processing parameters
-        output: Output generation settings
-    
-    Example:
-        >>> # Create config with custom hotel position
-        >>> config = Config.default()
-        >>> config.hotel_box.distance_factor = 1.5  # Hotel is farther away
-        >>> config.video.res_width = 3840  # 4K video
-        >>> 
-        >>> # Parameters automatically scale
-        >>> width, height = config.video.res_width, config.video.res_height
-        >>> nest_width = config.nest.nest_width(width, height, config.hotel_box)
-        >>> print(f"Scaled nest width: {nest_width}px")
-    """
+    """Main configuration with hotel box-aware parameter scaling."""
     
     video: VideoConfig = field(default_factory=VideoConfig)
     hotel_box: HotelBoxConfig = field(default_factory=HotelBoxConfig)
@@ -1209,22 +742,11 @@ class Config:
     
     @property
     def resolution(self) -> Tuple[int, int]:
-        """Get current resolution as tuple.
-        
-        Returns:
-            Tuple of (width, height)
-        """
+        """Get current resolution as tuple."""
         return (self.video.res_width, self.video.res_height)
     
     def get_nest_params(self, hotel_box: Optional[HotelBoxConfig] = None) -> Dict[str, Any]:
-        """Get all scaled nest detection parameters.
-        
-        Args:
-            hotel_box: Optional hotel box config (uses self.hotel_box if None)
-            
-        Returns:
-            Dictionary of scaled parameters
-        """
+        """Get all scaled nest detection parameters."""
         if hotel_box is None:
             hotel_box = self.hotel_box
         
@@ -1242,14 +764,7 @@ class Config:
         }
     
     def get_tracking_params(self, hotel_box: Optional[HotelBoxConfig] = None) -> Dict[str, Any]:
-        """Get all scaled tracking parameters.
-        
-        Args:
-            hotel_box: Optional hotel box config (uses self.hotel_box if None)
-            
-        Returns:
-            Dictionary of scaled parameters
-        """
+        """Get all scaled tracking parameters."""
         if hotel_box is None:
             hotel_box = self.hotel_box
         
@@ -1262,14 +777,7 @@ class Config:
         }
     
     def get_processing_params(self, hotel_box: Optional[HotelBoxConfig] = None) -> Dict[str, Any]:
-        """Get all scaled processing parameters.
-        
-        Args:
-            hotel_box: Optional hotel box config (uses self.hotel_box if None)
-            
-        Returns:
-            Dictionary of scaled parameters
-        """
+        """Get all scaled processing parameters."""
         if hotel_box is None:
             hotel_box = self.hotel_box
         
@@ -1326,69 +834,38 @@ class Config:
     def high_quality(cls) -> 'Config':
         """Create a Config optimized for high-quality detection."""
         config = cls()
-        
-        # Stricter nest detection
         config.nest.confidence_threshold = 0.95
         config.nest.min_detections = 60
         config.nest.nest_count_tolerance = 0
         config.nest.spacing_tolerance_base = 10.0
         config.nest.x_position_tolerance_base = 10.0
         config.nest.y_position_tolerance_base = 8.0
-        
-        # More conservative tracking
         config.tracking.max_age = 20
         config.tracking.association_threshold_base = 150.0
-        
         return config
     
     @classmethod
     def fast(cls) -> 'Config':
         """Create a Config optimized for speed."""
         config = cls()
-        
-        # Faster nest detection
         config.nest.confidence_threshold = 0.8
         config.nest.min_detections = 55
         config.nest.max_detection_attempts = 5
         config.nest.nest_count_tolerance = 5
         config.nest.spacing_tolerance_base = 20.0
-        
-        # Faster tracking
         config.tracking.no_motion_frames = 20
-        
         return config
     
     @classmethod
     def for_distance(cls, distance_factor: float) -> 'Config':
-        """Create a Config for a specific camera distance.
-        
-        Args:
-            distance_factor: Scale factor for distance
-                1.0 = reference distance
-                < 1.0 = closer (objects appear larger)
-                > 1.0 = farther (objects appear smaller)
-                
-        Returns:
-            Configured Config instance
-        
-        Example:
-            >>> # Hotel is 50% farther than reference
-            >>> config = Config.for_distance(1.5)
-        """
+        """Create a Config for a specific camera distance."""
         config = cls()
         config.hotel_box.distance_factor = distance_factor
         return config
     
     @classmethod
     def from_dict(cls, config_dict: dict) -> 'Config':
-        """Create a Config from a dictionary.
-        
-        Args:
-            config_dict: Dictionary with configuration values
-            
-        Returns:
-            Config instance
-        """
+        """Create a Config from a dictionary."""
         video_config = VideoConfig(**config_dict.get('video', {}))
         hotel_box_config = HotelBoxConfig(**config_dict.get('hotel_box', {}))
         models_config = ModelConfig(**config_dict.get('models', {}))
@@ -1413,34 +890,16 @@ class Config:
         return asdict(self)
     
     def validate(self) -> bool:
-        """Validate the entire configuration.
-        
-        Returns:
-            True if configuration is valid
-            
-        Raises:
-            ValueError: If configuration is invalid
-        """
-        # Individual configs validate in __post_init__
-        
+        """Validate the entire configuration."""
         if self.tracking.max_age < 1:
             raise ValueError("tracking.max_age must be at least 1")
-        
         if self.video.fps < 1:
             raise ValueError("video.fps must be at least 1")
-        
         return True
     
     @classmethod
     def from_yaml(cls, config_path: str) -> "Config":
-        """Load configuration from YAML file.
-        
-        Args:
-            config_path: Path to YAML configuration file
-            
-        Returns:
-            Config object with loaded settings
-        """
+        """Load configuration from YAML file."""
         config_file = Path(config_path)
         if not config_file.exists():
             raise FileNotFoundError(f"Configuration file not found: {config_path}")
@@ -1451,61 +910,24 @@ class Config:
         return cls.from_dict(config_dict)
     
     def save_yaml(self, output_path: str) -> None:
-        """Save configuration to YAML file.
-        
-        Args:
-            output_path: Path where configuration will be saved
-        """
+        """Save configuration to YAML file."""
         with open(output_path, "w", encoding="utf-8") as f:
             yaml.dump(self.to_dict(), f, default_flow_style=False)
 
 
-# Convenience functions
 def get_config_for_scenario(scenario: str, **kwargs) -> Config:
-    """Get a pre-configured Config for common scenarios.
-    
-    Args:
-        scenario: One of 'default', 'high_quality', 'fast', 'close', 'far'
-        **kwargs: Additional parameters (e.g., distance_factor for distance-based configs)
-        
-    Returns:
-        Configured Config instance
-        
-    Example:
-        >>> config = get_config_for_scenario('far', distance_factor=2.0)
-    """
+    """Get a pre-configured Config for common scenarios."""
     if scenario == 'default':
         return Config.default()
-    
     elif scenario == 'high_quality':
         return Config.high_quality()
-    
     elif scenario == 'fast':
         return Config.fast()
-    
     elif scenario == 'close':
-        # Hotel is closer than reference (objects appear larger)
         distance_factor = kwargs.get('distance_factor', 0.7)
         return Config.for_distance(distance_factor)
-    
     elif scenario == 'far':
-        # Hotel is farther than reference (objects appear smaller)
         distance_factor = kwargs.get('distance_factor', 1.5)
         return Config.for_distance(distance_factor)
-    
     else:
         raise ValueError(f"Unknown scenario: {scenario}")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
