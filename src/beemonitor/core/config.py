@@ -102,8 +102,8 @@ class VideoConfig:
 @dataclass
 class ModelConfig:
     """Model paths configuration."""
-    nest_detection: str = "/Users/edwardamoah/Documents/GitHub/BeeMonitor/models/nest.pt"
-    tracking: str = "/Users/edwardamoah/Documents/GitHub/BeeMonitor/models/bee_tracking.pt"
+    nest_detection: str = "/Users/edwardamoah/Documents/GitHub/BeeMonitor/models/nest_detection.pt"
+    tracking: str = "/Users/edwardamoah/Documents/GitHub/BeeMonitor/models/bee_detection.pt"
     #tracking : str = "/Users/edwardamoah/Documents/GitHub/BeeMonitor/models/bee_tracking_back_up_Full_Mode.pt"
     classification: Optional[str] = None
 
