@@ -179,7 +179,7 @@ If you use BeeMonitor in your research, please cite:
   title={BeeMonitor: Automated IoT video surveillance hardware and an AI-powered video processing software for monitoring the behavior of solitary, cavity-nesting bees},
   author={Amoah, Edward I.,Sanjel Santosh, Boyle Natalie K., and Grozinger Christina M.},
   year={2026},
-  url={https://github.com/eai6/BeeMonitor.git}
+  url={https://github.com/Team-Insect-Net/BeeMonitor}
 }
 ```
 
