@@ -45,7 +45,7 @@ Evaluated on 110 minutes of video containing 300 manually annotated foraging eve
 ### Install from Source
 
 ```bash
-git clone https://github.com/eai6/BeeMonitor.git
+git clone https://github.com/Team-Insect-Net/BeeMonitor
 cd beemonitor
 pip install -e .
 ```
